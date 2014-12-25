@@ -1,4 +1,4 @@
-package infra.e_braillebasics.util;
+package infra.e_braillebasics;
 
 import android.content.Context;
 import android.database.ContentObserver;
@@ -15,7 +15,6 @@ public class SettingsContentObserver extends ContentObserver {
     public SettingsContentObserver(Context c, Handler handler) {
         super(handler);
         context=c;
-
         AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         previousVolume = audio.getStreamVolume(AudioManager.STREAM_SYSTEM);
     }

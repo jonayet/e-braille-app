@@ -2,11 +2,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="infra.e_braillebasics" >
 
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.ACCESS_SUPERUSER" />
+
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/AppTheme" >
+
         <activity
             android:name=".main_activity"
             android:configChanges="orientation|keyboardHidden|screenSize"
@@ -18,7 +23,7 @@
             </intent-filter>
         </activity>
 
-        <receiver android:name=".util.VolumeChangeReceiver" >
+        <receiver android:name=".VolumeChangeReceiver" >
             <intent-filter>
                 <action android:name="android.media.VOLUME_CHANGED_ACTION" />
             </intent-filter>
