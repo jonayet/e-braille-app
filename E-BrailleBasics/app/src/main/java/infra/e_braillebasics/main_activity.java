@@ -5,22 +5,31 @@ import infra.e_braillebasics.util.SystemUiHider;
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
+import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Vibrator;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.ImageView;
+import android.widget.TextView;
 import android.widget.Toast;
-
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 
+import com.googlecode.tesseract.android.TessBaseAPI;
 
 /**
  * An example full-screen activity that shows and hides the system UI (i.e.
@@ -28,7 +37,7 @@ import java.io.File;
  *
  * @see SystemUiHider
  */
-public class main_activity extends Activity {
+public class main_activity extends Activity implements View.OnTouchListener {
     /**
      * Whether or not the system UI should be auto-hidden after
      * {@link #AUTO_HIDE_DELAY_MILLIS} milliseconds.
@@ -56,10 +65,51 @@ public class main_activity extends Activity {
      * The instance of the {@link SystemUiHider} for this activity.
      */
     private SystemUiHider mSystemUiHider;
-    private SettingsContentObserver mSettingsContentObserver;
+    Bitmap screenshot;
+    Bitmap cropped_screenshot;
+    ImageView imageView;
+    ImageView previewImageView;
+    TextView textView;
+
+    TessBaseAPI baseApi;
+    public static final String DATA_PATH = Environment.getExternalStorageDirectory().toString() + "/SimpleAndroidOCR/";
+    public static final String lang = "eng";
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
+        // lang.traineddata file with the app (in assets folder)
+        // You can get them at:
+        // http://code.google.com/p/tesseract-ocr/downloads/list
+        // This area needs work and optimization
+        if (!(new File(DATA_PATH + "tessdata/" + lang + ".traineddata")).exists()) {
+            try {
+
+                AssetManager assetManager = getAssets();
+                InputStream in = assetManager.open("tessdata/" + lang + ".traineddata");
+                //GZIPInputStream gin = new GZIPInputStream(in);
+                OutputStream out = new FileOutputStream(DATA_PATH
+                        + "tessdata/" + lang + ".traineddata");
+
+                // Transfer bytes from in to out
+                byte[] buf = new byte[1024];
+                int len;
+                //while ((lenf = gin.read(buff)) > 0) {
+                while ((len = in.read(buf)) > 0) {
+                    out.write(buf, 0, len);
+                }
+                in.close();
+                //gin.close();
+                out.close();
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+
         super.onCreate(savedInstanceState);
 
         requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -76,6 +126,8 @@ public class main_activity extends Activity {
         }
         setContentView(R.layout.main_activity_fullscreen);
         final View contentView = findViewById(R.id.fullscreen_content);
+        imageView = (ImageView)findViewById(R.id.imageView);
+        imageView.setOnTouchListener(this);
 
         // Set up an instance of SystemUiHider to control the system UI for
         // this activity.
@@ -85,6 +137,16 @@ public class main_activity extends Activity {
 
         // vibrate at startup
         ((Vibrator)this.getSystemService(Context.VIBRATOR_SERVICE)).vibrate(100);
+
+        baseApi = new TessBaseAPI();
+        //baseApi.setDebug(false);
+        //baseApi.init(DATA_PATH, lang);
+        textView = (TextView) findViewById(R.id.textView);
+    }
+
+    @Override
+    protected void onPostCreate(Bundle savedInstanceState) {
+        super.onPostCreate(savedInstanceState);
     }
 
     @Override
@@ -92,11 +154,17 @@ public class main_activity extends Activity {
         super.onResume();
         File image = new  File("/sdcard/screenshot.jpg");
         if(image.exists()){
-            Bitmap screenshot = BitmapFactory.decodeFile(image.getAbsolutePath());
-            //Bitmap cropped_screenshot =Bitmap.createBitmap(screenshot, 0,0,screenshot.getWidth(), screenshot.getHeight() - 150);
-            ImageView imageView = (ImageView)findViewById(R.id.imageView);
+            screenshot = BitmapFactory.decodeFile(image.getAbsolutePath());
+            imageView = (ImageView)findViewById(R.id.imageView);
             imageView.setImageBitmap(screenshot);
         }
+    }
+
+    @Override
+    public void onDestroy()
+    {
+        baseApi.end();
+        super.onDestroy();
     }
 
     @Override
@@ -110,16 +178,6 @@ public class main_activity extends Activity {
                                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
             }
         }
-    }
-
-    @Override
-    protected void onPostCreate(Bundle savedInstanceState) {
-        super.onPostCreate(savedInstanceState);
-
-        // Trigger the initial hide() shortly after the activity has been
-        // created, to briefly hint to the user that UI controls
-        // are available.
-        delayedHide(100);
     }
 
     @Override
@@ -146,43 +204,37 @@ public class main_activity extends Activity {
         }
     }
 
-    @Override
-    public void onDestroy()
-    {
-        //getApplicationContext().getContentResolver().unregisterContentObserver(mSettingsContentObserver);
-        super.onDestroy();
-    }
+    public boolean onTouch(View v, MotionEvent event) {
+        int action = event.getAction();
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+                try {
+                    cropped_screenshot = Bitmap.createBitmap(screenshot, (int) event.getX(), (int) event.getY(), 100, 100);
+                    previewImageView = (ImageView) findViewById(R.id.previewImageView);
+                    previewImageView.setImageBitmap(cropped_screenshot);
 
 
-    /**
-     * Touch listener to use for in-layout UI controls to delay hiding the
-     * system UI. This is to prevent the jarring behavior of controls going away
-     * while interacting with activity UI.
-     */
-    View.OnTouchListener mDelayHideTouchListener = new View.OnTouchListener() {
-        @Override
-        public boolean onTouch(View view, MotionEvent motionEvent) {
-            if (AUTO_HIDE) {
-                delayedHide(AUTO_HIDE_DELAY_MILLIS);
-            }
-            return false;
+//                    baseApi.setImage(cropped_screenshot);
+                    String recognizedText = ":)";//baseApi.getUTF8Text();
+                    textView.setText(recognizedText);
+                }
+                catch(Exception e){}
+                break;
+            case MotionEvent.ACTION_MOVE:
+                try{
+                    cropped_screenshot = Bitmap.createBitmap(screenshot, (int) event.getX(), (int) event.getY(), 100, 100);
+                    previewImageView = (ImageView) findViewById(R.id.previewImageView);
+                    previewImageView.setImageBitmap(cropped_screenshot);
+                }
+                catch(Exception e){}
+                break;
+            case MotionEvent.ACTION_UP:
+                break;
+            case MotionEvent.ACTION_CANCEL:
+                break;
+            default:
+                break;
         }
-    };
-
-    Handler mHideHandler = new Handler();
-    Runnable mHideRunnable = new Runnable() {
-        @Override
-        public void run() {
-            mSystemUiHider.hide();
-        }
-    };
-
-    /**
-     * Schedules a call to hide() in [delay] milliseconds, canceling any
-     * previously scheduled calls.
-     */
-    private void delayedHide(int delayMillis) {
-        mHideHandler.removeCallbacks(mHideRunnable);
-        mHideHandler.postDelayed(mHideRunnable, delayMillis);
+        return true;
     }
 }

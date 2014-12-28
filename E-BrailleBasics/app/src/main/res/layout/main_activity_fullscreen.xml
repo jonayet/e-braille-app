@@ -15,21 +15,26 @@
          android:fitsSystemWindows. -->
     <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent"
         android:fitsSystemWindows="true">
-
-        <LinearLayout android:id="@+id/fullscreen_content_controls" style="?metaButtonBarStyle"
+        <ImageView
+            android:id="@+id/imageView"
             android:layout_width="fill_parent"
             android:layout_height="fill_parent"
-            android:background="@color/black_overlay"
-            android:orientation="horizontal"
-            android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+            android:scaleType="fitXY"/>
 
-            <ImageView
-                android:id="@+id/imageView"
-                android:layout_width="fill_parent"
-                android:layout_height="fill_parent"
-                android:scaleType="fitXY"/>
+        <ImageView
+            android:id="@+id/previewImageView"
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:scaleType="fitXY"
+            android:layout_gravity="right|bottom" />
 
-        </LinearLayout>
+        <TextView
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:textAppearance="?android:attr/textAppearanceLarge"
+            android:id="@+id/textView"
+            android:layout_gravity="center_horizontal|bottom" />
+
     </FrameLayout>
 
 </FrameLayout>
