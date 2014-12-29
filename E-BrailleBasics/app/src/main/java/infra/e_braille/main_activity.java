@@ -84,14 +84,16 @@ public class main_activity extends Activity implements View.OnTouchListener {
         }
         setContentView(R.layout.main_activity_fullscreen);
         final View contentView = findViewById(R.id.fullscreen_content);
-        imageView = (ImageView)findViewById(R.id.imageView);
-        imageView.setOnTouchListener(this);
 
         // Set up an instance of SystemUiHider to control the system UI for
         // this activity.
         mSystemUiHider = SystemUiHider.getInstance(this, contentView, HIDER_FLAGS);
         mSystemUiHider.setup();
         mSystemUiHider.show();
+
+        previewImageView = (ImageView)findViewById(R.id.previewImageView);
+        imageView = (ImageView)findViewById(R.id.imageView);
+        imageView.setOnTouchListener(this);
 
         // vibrate at startup
         ((Vibrator)this.getSystemService(Context.VIBRATOR_SERVICE)).vibrate(100);
@@ -171,7 +173,6 @@ public class main_activity extends Activity implements View.OnTouchListener {
             case MotionEvent.ACTION_DOWN:
                 try {
                     cropped_screenshot = Bitmap.createBitmap(screenshot, (int) event.getX(), (int) event.getY(), 100, 50);
-                    previewImageView = (ImageView) findViewById(R.id.previewImageView);
                     previewImageView.setImageBitmap(cropped_screenshot);
 
                     baseApi.setImage(cropped_screenshot);
@@ -183,7 +184,6 @@ public class main_activity extends Activity implements View.OnTouchListener {
             case MotionEvent.ACTION_MOVE:
                 try{
                     cropped_screenshot = Bitmap.createBitmap(screenshot, (int) event.getX(), (int) event.getY(), 100, 50);
-                    previewImageView = (ImageView) findViewById(R.id.previewImageView);
                     previewImageView.setImageBitmap(cropped_screenshot);
 
                     baseApi.setImage(cropped_screenshot);
