@@ -38,10 +38,24 @@
  *          PIX        *pixReadMemGif()
  *          l_int32     pixWriteMemGif()
  *
- *    This uses the gif library, version 4.1.6.  Do not use 4.1.4.
+ *    The initial version of this module was generously contribued by
+ *    Antony Dovgal.  He can be contacted at:  tony *AT* daylessday.org
  *
- *    This module was generously contribued by Antony Dovgal.
- *    He can be contacted at:  tony *AT* daylessday.org
+ *    Important version information:
+ *
+ *    (1) This uses the gif library, version 4.1.6 or later.
+ *        Do not use 4.1.4.  It has serious problems handling 1 bpp images.
+ *
+ *    (2) There are some issues with version 5.0:
+ *        - valgrind detects uninitialized values used used for writing
+ *          and conditionally jumping in EGifPutScreenDesc().
+ *        - DGifSlurp() crashes on some images, apparently triggered by
+ *          by some GIF extension records.  The latter problem has been
+ *          reported but not resolved as of October 2013.
+ *
+ *    (3) E. Raymond has been changing the high-level interface with 5.0
+ *        and 5.1, and to keep up we have used macros determined by the
+ *        major and minor version numbers.
  */
 
 #include <string.h>
@@ -68,6 +82,19 @@ static PIX * pixInterlaceGIF(PIX  *pixs);
 static const l_int32 InterlacedOffset[] = {0, 4, 2, 1};
 static const l_int32 InterlacedJumps[] = {8, 8, 4, 2};
 
+    /* Basic interface changed in 5.0 (!) */
+#if GIFLIB_MAJOR < 5
+#define GifMakeMapObject         MakeMapObject
+#define GifFreeMapObject         FreeMapObject
+#define DGifOpenFileHandle(a,b)  DGifOpenFileHandle(a)
+#define EGifOpenFileHandle(a,b)  EGifOpenFileHandle(a)
+#endif  /* GIFLIB_MAJOR */
+
+    /* Basic interface changed again in 5.1 (!) */
+#if GIFLIB_MAJOR < 5 || (GIFLIB_MAJOR == 5 && GIFLIB_MINOR == 0)
+#define DGifCloseFile(a,b)       DGifCloseFile(a)
+#define EGifCloseFile(a,b)       EGifCloseFile(a)
+#endif
 
 /*---------------------------------------------------------------------*
  *                       Reading gif from file                         *
@@ -89,6 +116,7 @@ PIX             *pixd, *pixdi;
 PIXCMAP         *cmap;
 ColorMapObject  *gif_cmap;
 SavedImage       si;
+int              giferr;
 
     PROCNAME("pixReadStreamGif");
 
@@ -100,18 +128,18 @@ SavedImage       si;
     _lseek(fd, 0, SEEK_SET);
 #endif  /* _MSC_VER */
 
-    if ((gif = DGifOpenFileHandle(fd)) == NULL)
+    if ((gif = DGifOpenFileHandle(fd, NULL)) == NULL)
         return (PIX *)ERROR_PTR("invalid file or file not found",
                                 procName, NULL);
 
         /* Read all the data, but use only the first image found */
     if (DGifSlurp(gif) != GIF_OK) {
-        DGifCloseFile(gif);
+        DGifCloseFile(gif, &giferr);
         return (PIX *)ERROR_PTR("failed to read GIF data", procName, NULL);
     }
 
     if (gif->SavedImages == NULL) {
-        DGifCloseFile(gif);
+        DGifCloseFile(gif, &giferr);
         return (PIX *)ERROR_PTR("no images found in GIF", procName, NULL);
     }
 
@@ -119,26 +147,24 @@ SavedImage       si;
     w = si.ImageDesc.Width;
     h = si.ImageDesc.Height;
     if (w <= 0 || h <= 0) {
-        DGifCloseFile(gif);
+        DGifCloseFile(gif, &giferr);
         return (PIX *)ERROR_PTR("invalid image dimensions", procName, NULL);
     }
 
     if (si.RasterBits == NULL) {
-        DGifCloseFile(gif);
+        DGifCloseFile(gif, &giferr);
         return (PIX *)ERROR_PTR("no raster data in GIF", procName, NULL);
     }
 
     if (si.ImageDesc.ColorMap) {
             /* private cmap for this image */
         gif_cmap = si.ImageDesc.ColorMap;
-    }
-    else if (gif->SColorMap) {
+    } else if (gif->SColorMap) {
             /* global cmap for whole picture */
         gif_cmap = gif->SColorMap;
-    }
-    else {
+    } else {
             /* don't know where to take cmap from */
-        DGifCloseFile(gif);
+        DGifCloseFile(gif, &giferr);
         return (PIX *)ERROR_PTR("color map is missing", procName, NULL);
     }
 
@@ -162,7 +188,7 @@ SavedImage       si;
     }
 
     if ((pixd = pixCreate(w, h, d)) == NULL) {
-        DGifCloseFile(gif);
+        DGifCloseFile(gif, &giferr);
         pixcmapDestroy(&cmap);
         return (PIX *)ERROR_PTR("failed to allocate pixd", procName, NULL);
     }
@@ -177,16 +203,13 @@ SavedImage       si;
                 if (si.RasterBits[i * w + j])
                     SET_DATA_BIT(line, j);
             }
-        }
-        else if (d == 2) {
+        } else if (d == 2) {
             for (j = 0; j < w; j++)
                 SET_DATA_DIBIT(line, j, si.RasterBits[i * w + j]);
-        }
-        else if (d == 4) {
+        } else if (d == 4) {
             for (j = 0; j < w; j++)
                 SET_DATA_QBIT(line, j, si.RasterBits[i * w + j]);
-        }
-        else {  /* d == 8 */
+        } else {  /* d == 8 */
             for (j = 0; j < w; j++)
                 SET_DATA_BYTE(line, j, si.RasterBits[i * w + j]);
         }
@@ -197,7 +220,7 @@ SavedImage       si;
         pixTransferAllData(pixd, &pixdi, 0, 0);
     }
 
-    DGifCloseFile(gif);
+    DGifCloseFile(gif, &giferr);
     return pixd;
 }
 
@@ -264,6 +287,7 @@ PIXCMAP         *cmap;
 GifFileType     *gif;
 ColorMapObject  *gif_cmap;
 GifByteType     *gif_line;
+int              giferr;
 
     PROCNAME("pixWriteStreamGif");
 
@@ -279,11 +303,9 @@ GifByteType     *gif_line;
     d = pixGetDepth(pix);
     if (d == 32) {
         pixd = pixConvertRGBToColormap(pix, 1);
-    }
-    else if (d > 1) {
+    } else if (d > 1) {
         pixd = pixConvertTo8(pix, TRUE);
-    }
-    else {  /* d == 1; make sure there's a colormap */
+    } else {  /* d == 1; make sure there's a colormap */
         pixd = pixClone(pix);
         if (!pixGetColormap(pixd)) {
             cmap = pixcmapCreate(1);
@@ -316,7 +338,7 @@ GifByteType     *gif_line;
     }
 
         /* Save the cmap colors in a gif_cmap */
-    if ((gif_cmap = MakeMapObject(gif_ncolor, NULL)) == NULL) {
+    if ((gif_cmap = GifMakeMapObject(gif_ncolor, NULL)) == NULL) {
         pixDestroy(&pixd);
         return ERROR_INT("failed to create GIF color map", procName, 1);
     }
@@ -325,7 +347,7 @@ GifByteType     *gif_line;
         if (ncolor > 0) {
             if (pixcmapGetColor(cmap, i, &rval, &gval, &bval) != 0) {
                 pixDestroy(&pixd);
-                FreeMapObject(gif_cmap);
+                GifFreeMapObject(gif_cmap);
                 return ERROR_INT("failed to get color from color map",
                                  procName, 1);
             }
@@ -337,9 +359,9 @@ GifByteType     *gif_line;
     }
 
         /* Get the gif file handle */
-    if ((gif = EGifOpenFileHandle(fd)) == NULL) {
+    if ((gif = EGifOpenFileHandle(fd, NULL)) == NULL) {
+        GifFreeMapObject(gif_cmap);
         pixDestroy(&pixd);
-        FreeMapObject(gif_cmap);
         return ERROR_INT("failed to create GIF image handle", procName, 1);
     }
 
@@ -347,29 +369,29 @@ GifByteType     *gif_line;
     if (EGifPutScreenDesc(gif, w, h, gif_cmap->BitsPerPixel, 0, gif_cmap)
         != GIF_OK) {
         pixDestroy(&pixd);
-        FreeMapObject(gif_cmap);
-        EGifCloseFile(gif);
+        GifFreeMapObject(gif_cmap);
+        EGifCloseFile(gif, &giferr);
         return ERROR_INT("failed to write screen description", procName, 1);
     }
-    FreeMapObject(gif_cmap); /* not needed after this point */
+    GifFreeMapObject(gif_cmap); /* not needed after this point */
 
     if (EGifPutImageDesc(gif, 0, 0, w, h, FALSE, NULL) != GIF_OK) {
         pixDestroy(&pixd);
-        EGifCloseFile(gif);
+        EGifCloseFile(gif, &giferr);
         return ERROR_INT("failed to image screen description", procName, 1);
     }
 
-    data = pixGetData(pixd);	
+    data = pixGetData(pixd);
     wpl = pixGetWpl(pixd);
     if (d != 1 && d != 2 && d != 4 && d != 8) {
         pixDestroy(&pixd);
-        EGifCloseFile(gif);
+        EGifCloseFile(gif, &giferr);
         return ERROR_INT("image depth is not in {1, 2, 4, 8}", procName, 1);
     }
 
     if ((gif_line = (GifByteType *)CALLOC(sizeof(GifByteType), w)) == NULL) {
         pixDestroy(&pixd);
-        EGifCloseFile(gif);
+        EGifCloseFile(gif, &giferr);
         return ERROR_INT("mem alloc fail for data line", procName, 1);
     }
 
@@ -398,7 +420,7 @@ GifByteType     *gif_line;
         if (EGifPutLine(gif, gif_line, w) != GIF_OK) {
             FREE(gif_line);
             pixDestroy(&pixd);
-            EGifCloseFile(gif);
+            EGifCloseFile(gif, &giferr);
             return ERROR_INT("failed to write data line into GIF", procName, 1);
         }
     }
@@ -409,12 +431,12 @@ GifByteType     *gif_line;
          * to read comments. */
     if ((text = pixGetText(pix)) != NULL) {
         if (EGifPutComment(gif, text) != GIF_OK)
-            L_WARNING("gif comment not written", procName);
+            L_WARNING("gif comment not written\n", procName);
     }
 
     FREE(gif_line);
     pixDestroy(&pixd);
-    EGifCloseFile(gif);
+    EGifCloseFile(gif, &giferr);
     return 0;
 }
 
@@ -430,8 +452,10 @@ GifByteType     *gif_line;
  *      Return: pix, or null on error
  *
  *  Notes:
- *      (1) Of course, we are cheating here -- writing the data out
- *          to file and then reading it back in as a gif format.
+ *      (1) Of course, we are cheating here -- writing the data to file
+ *          in gif format and reading it back in.  We can't use the
+ *          GNU runtime extension fmemopen() to avoid writing to a file
+ *          because libgif doesn't have a file stream interface!
  *      (2) This should not be assumed to be safe from a sophisticated
  *          attack, even though we have attempted to make the filename
  *          difficult to guess by embedding the process number and the
@@ -452,23 +476,24 @@ PIX *
 pixReadMemGif(const l_uint8  *cdata,
               size_t          size)
 {
-char     *tname;
-l_uint8  *data;
-PIX      *pix;
+char  *fname;
+PIX   *pix;
 
     PROCNAME("pixReadMemGif");
 
     if (!cdata)
         return (PIX *)ERROR_PTR("cdata not defined", procName, NULL);
+    L_WARNING("writing to a temp file, not directly to memory\n", procName);
 
-    data = (l_uint8 *)cdata;  /* we're really not going to change this */
-    tname = genTempFilename("/tmp/", "mem.gif", 1, 1);
-    l_binaryWrite(tname, "w", data, size);
-    pix = pixRead(tname);
-    remove(tname);
-    FREE(tname);
-    if (!pix)
-        return (PIX *)ERROR_PTR("pix not read", procName, NULL);
+        /* Write to a temp file */
+    fname = genTempFilename("/tmp/", "mem.gif", 1, 1);
+    l_binaryWrite(fname, "w", (l_uint8 *)cdata, size);
+
+        /* Read back from the file */
+    pix = pixRead(fname);
+    lept_rmfile(fname);
+    lept_free(fname);
+    if (!pix) L_ERROR("pix not read\n", procName);
     return pix;
 }
 
@@ -489,28 +514,28 @@ pixWriteMemGif(l_uint8  **pdata,
                size_t    *psize,
                PIX       *pix)
 {
-char     *tname;
-l_uint8  *data;
-size_t    nbytes;
+char  *fname;
 
     PROCNAME("pixWriteMemGif");
 
     if (!pdata)
         return ERROR_INT("&data not defined", procName, 1 );
+    *pdata = NULL;
     if (!psize)
         return ERROR_INT("&size not defined", procName, 1 );
+    *psize = 0;
     if (!pix)
         return ERROR_INT("&pix not defined", procName, 1 );
+    L_WARNING("writing to a temp file, not directly to memory\n", procName);
 
-    tname = genTempFilename("/tmp/", "mem.gif", 1, 1);
-    pixWrite(tname, pix, IFF_GIF);
-    data = l_binaryRead(tname, &nbytes);
-    remove(tname);
-    FREE(tname);
-    if (!data)
-        return ERROR_INT("data not returned", procName, 1 );
-    *pdata = data;
-    *psize = nbytes;
+        /* Write to a temp file */
+    fname = genTempFilename("/tmp/", "mem.gif", 1, 1);
+    pixWrite(fname, pix, IFF_GIF);
+
+        /* Read back into memory */
+    *pdata = l_binaryRead(fname, psize);
+    lept_rmfile(fname);
+    lept_free(fname);
     return 0;
 }
 

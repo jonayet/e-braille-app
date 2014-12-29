@@ -29,16 +29,39 @@ extern "C" {
 #endif  /* __cplusplus */
 
 void Java_com_googlecode_tesseract_android_PageIterator_nativeBegin(JNIEnv *env, jclass clazz,
-    jint nativePageIterator) {
+    jlong nativePageIterator) {
   ((PageIterator *) nativePageIterator)->Begin();
 }
 
 jboolean Java_com_googlecode_tesseract_android_PageIterator_nativeNext(JNIEnv *env, jclass clazz,
-    jint nativePageIterator, jint level) {
+    jlong nativePageIterator, jint level) {
   PageIterator *pageIterator = (PageIterator *) nativePageIterator;
   PageIteratorLevel enumLevel = (PageIteratorLevel) level;
 
   return pageIterator->Next(enumLevel) ? JNI_TRUE : JNI_FALSE;
+}
+
+jintArray Java_com_googlecode_tesseract_android_PageIterator_nativeBoundingBox(JNIEnv *env, jclass clazz,
+    jlong nativePageIterator, jint level) {
+  int size = 4;
+  jintArray result = env->NewIntArray(size);
+
+  LOG_ASSERT((result != NULL), "Could not create Java bounding box array!");
+  
+  PageIterator *pageIterator = (PageIterator *) nativePageIterator;
+  PageIteratorLevel enumLevel = (PageIteratorLevel) level;
+  int x1, y1, x2, y2;
+  pageIterator->BoundingBox(enumLevel, &x1, &y1, &x2, &y2);
+  
+  // fill a temp structure to use to populate the java int array
+  jint fill[4];
+  fill[0] = x1;
+  fill[1] = y1;
+  fill[2] = x2;
+  fill[3] = y2;
+ 
+  env->SetIntArrayRegion(result, 0, size, fill);
+  return result;
 }
 
 #ifdef __cplusplus

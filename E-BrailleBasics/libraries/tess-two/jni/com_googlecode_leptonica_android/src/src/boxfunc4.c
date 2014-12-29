@@ -27,38 +27,148 @@
 /*
  *   boxfunc4.c
  *
- *      Boxa Selection
+ *      Boxa and Boxaa range selection
+ *           BOXA     *boxaSelectRange()
+ *           BOXAA    *boxaaSelectRange()
+ *
+ *      Boxa size selection
  *           BOXA     *boxaSelectBySize()
  *           NUMA     *boxaMakeSizeIndicator()
+ *           BOXA     *boxaSelectByArea()
+ *           NUMA     *boxaMakeAreaIndicator()
  *           BOXA     *boxaSelectWithIndicator()
  *
- *      Boxa Permutation
+ *      Boxa permutation
  *           BOXA     *boxaPermutePseudorandom()
  *           BOXA     *boxaPermuteRandom()
  *           l_int32   boxaSwapBoxes()
  *
- *      Boxa Conversions
+ *      Boxa conversions
  *           PTA      *boxaConvertToPta()
  *           BOXA     *ptaConvertToBoxa()
  *
  *      Boxa sequence fitting
  *           BOXA     *boxaSmoothSequence()
  *           BOXA     *boxaLinearFit()
+ *           BOXA     *boxaModifyWithBoxa()
  *           BOXA     *boxaConstrainSize()
+ *           BOXA     *boxaReconcileEvenOddHeight()
  *           l_int32   boxaPlotSides()    [for debugging]
  *
  *      Miscellaneous boxa functions
  *           l_int32   boxaGetExtent()
  *           l_int32   boxaGetCoverage()
+ *           l_int32   boxaaSizeRange()
  *           l_int32   boxaSizeRange()
  *           l_int32   boxaLocationRange()
+ *           l_int32   boxaGetArea()
+ *           PIX      *boxaDisplayTiled()
  */
 
 #include "allheaders.h"
 
 
 /*---------------------------------------------------------------------*
- *                            Boxa Selection                           *
+ *                     Boxa and boxaa range selection                  *
+ *---------------------------------------------------------------------*/
+/*!
+ *  boxaSelectRange()
+ *
+ *      Input:  boxas
+ *              first (use 0 to select from the beginning)
+ *              last (use 0 to select to the end)
+ *              copyflag (L_COPY, L_CLONE)
+ *      Return: boxad, or null on error
+ *
+ *  Notes:
+ *      (1) The copyflag specifies what we do with each box from boxas.
+ *          Specifically, L_CLONE inserts a clone into boxad of each
+ *          selected box from boxas.
+ */
+BOXA *
+boxaSelectRange(BOXA    *boxas,
+                l_int32  first,
+                l_int32  last,
+                l_int32  copyflag)
+{
+l_int32  n, nbox, i;
+BOX     *box;
+BOXA    *boxad;
+
+    PROCNAME("boxaSelectRange");
+
+    if (!boxas)
+        return (BOXA *)ERROR_PTR("boxas not defined", procName, NULL);
+    if (copyflag != L_COPY && copyflag != L_CLONE)
+        return (BOXA *)ERROR_PTR("invalid copyflag", procName, NULL);
+    n = boxaGetCount(boxas);
+    first = L_MAX(0, first);
+    if (last <= 0) last = n - 1;
+    if (first >= n)
+        return (BOXA *)ERROR_PTR("invalid first", procName, NULL);
+    if (first > last)
+        return (BOXA *)ERROR_PTR("first > last", procName, NULL);
+
+    nbox = last - first + 1;
+    boxad = boxaCreate(nbox);
+    for (i = first; i <= last; i++) {
+        box = boxaGetBox(boxas, i, copyflag);
+        boxaAddBox(boxad, box, L_INSERT);
+    }
+    return boxad;
+}
+
+
+/*!
+ *  boxaaSelectRange()
+ *
+ *      Input:  baas
+ *              first (use 0 to select from the beginning)
+ *              last (use 0 to select to the end)
+ *              copyflag (L_COPY, L_CLONE)
+ *      Return: baad, or null on error
+ *
+ *  Notes:
+ *      (1) The copyflag specifies what we do with each boxa from baas.
+ *          Specifically, L_CLONE inserts a clone into baad of each
+ *          selected boxa from baas.
+ */
+BOXAA *
+boxaaSelectRange(BOXAA   *baas,
+                 l_int32  first,
+                 l_int32  last,
+                 l_int32  copyflag)
+{
+l_int32  n, nboxa, i;
+BOXA    *boxa;
+BOXAA   *baad;
+
+    PROCNAME("boxaaSelectRange");
+
+    if (!baas)
+        return (BOXAA *)ERROR_PTR("baas not defined", procName, NULL);
+    if (copyflag != L_COPY && copyflag != L_CLONE)
+        return (BOXAA *)ERROR_PTR("invalid copyflag", procName, NULL);
+    n = boxaaGetCount(baas);
+    first = L_MAX(0, first);
+    if (last <= 0) last = n - 1;
+    if (first >= n)
+        return (BOXAA *)ERROR_PTR("invalid first", procName, NULL);
+    if (first > last)
+        return (BOXAA *)ERROR_PTR("first > last", procName, NULL);
+
+    nboxa = last - first + 1;
+    baad = boxaaCreate(nboxa);
+    for (i = first; i <= last; i++) {
+        boxa = boxaaGetBoxa(baas, i, copyflag);
+        boxaaAddBoxa(baad, boxa, L_INSERT);
+    }
+    return baad;
+}
+
+
+/*---------------------------------------------------------------------*
+ *                          Boxa size selection                        *
  *---------------------------------------------------------------------*/
 /*!
  *  boxaSelectBySize()
@@ -195,9 +305,104 @@ NUMA    *na;
                     ival = 1;
             break;
         default:
-            L_WARNING("can't get here!", procName);
+            L_WARNING("can't get here!\n", procName);
             break;
         }
+        numaAddNumber(na, ival);
+    }
+
+    return na;
+}
+
+
+/*!
+ *  boxaSelectByArea()
+ *
+ *      Input:  boxas
+ *              area (threshold value of width * height)
+ *              relation (L_SELECT_IF_LT, L_SELECT_IF_GT,
+ *                        L_SELECT_IF_LTE, L_SELECT_IF_GTE)
+ *              &changed (<optional return> 1 if changed; 0 if clone returned)
+ *      Return: boxad (filtered set), or null on error
+ *
+ *  Notes:
+ *      (1) Uses box clones in the new boxa.
+ *      (2) To keep small components, use relation = L_SELECT_IF_LT or
+ *          L_SELECT_IF_LTE.
+ *          To keep large components, use relation = L_SELECT_IF_GT or
+ *          L_SELECT_IF_GTE.
+ */
+BOXA *
+boxaSelectByArea(BOXA     *boxas,
+                 l_int32   area,
+                 l_int32   relation,
+                 l_int32  *pchanged)
+{
+BOXA  *boxad;
+NUMA  *na;
+
+    PROCNAME("boxaSelectByArea");
+
+    if (!boxas)
+        return (BOXA *)ERROR_PTR("boxas not defined", procName, NULL);
+    if (relation != L_SELECT_IF_LT && relation != L_SELECT_IF_GT &&
+        relation != L_SELECT_IF_LTE && relation != L_SELECT_IF_GTE)
+        return (BOXA *)ERROR_PTR("invalid relation", procName, NULL);
+    if (pchanged) *pchanged = FALSE;
+
+        /* Compute the indicator array for saving components */
+    na = boxaMakeAreaIndicator(boxas, area, relation);
+
+        /* Filter to get output */
+    boxad = boxaSelectWithIndicator(boxas, na, pchanged);
+
+    numaDestroy(&na);
+    return boxad;
+}
+
+
+/*!
+ *  boxaMakeAreaIndicator()
+ *
+ *      Input:  boxa
+ *              area (threshold value of width * height)
+ *              relation (L_SELECT_IF_LT, L_SELECT_IF_GT,
+ *                        L_SELECT_IF_LTE, L_SELECT_IF_GTE)
+ *      Return: na (indicator array), or null on error
+ *
+ *  Notes:
+ *      (1) To keep small components, use relation = L_SELECT_IF_LT or
+ *          L_SELECT_IF_LTE.
+ *          To keep large components, use relation = L_SELECT_IF_GT or
+ *          L_SELECT_IF_GTE.
+ */
+NUMA *
+boxaMakeAreaIndicator(BOXA     *boxa,
+                      l_int32   area,
+                      l_int32   relation)
+{
+l_int32  i, n, w, h, ival;
+NUMA    *na;
+
+    PROCNAME("boxaMakeAreaIndicator");
+
+    if (!boxa)
+        return (NUMA *)ERROR_PTR("boxa not defined", procName, NULL);
+    if (relation != L_SELECT_IF_LT && relation != L_SELECT_IF_GT &&
+        relation != L_SELECT_IF_LTE && relation != L_SELECT_IF_GTE)
+        return (NUMA *)ERROR_PTR("invalid relation", procName, NULL);
+
+    n = boxaGetCount(boxa);
+    na = numaCreate(n);
+    for (i = 0; i < n; i++) {
+        ival = 0;
+        boxaGetBoxGeometry(boxa, i, NULL, NULL, &w, &h);
+
+        if ((relation == L_SELECT_IF_LT && w * h < area) ||
+            (relation == L_SELECT_IF_GT && w * h > area) ||
+            (relation == L_SELECT_IF_LTE && w * h <= area) ||
+            (relation == L_SELECT_IF_GTE && w * h >= area))
+            ival = 1;
         numaAddNumber(na, ival);
     }
 
@@ -409,9 +614,9 @@ PTA     *pta;
     for (i = 0; i < n; i++) {
         boxaGetBoxGeometry(boxa, i, &x, &y, &w, &h);
         ptaAddPt(pta, x, y);
-        if (ncorners == 2)
+        if (ncorners == 2) {
             ptaAddPt(pta, x + w - 1, y + h - 1);
-        else {
+        } else {
             ptaAddPt(pta, x + w - 1, y);
             ptaAddPt(pta, x, y + h - 1);
             ptaAddPt(pta, x + w - 1, y + h - 1);
@@ -484,53 +689,75 @@ BOXA    *boxa;
  *  boxaSmoothSequence()
  *
  *      Input:  boxas (source boxa)
- *              factor (reject outliers with error greater than this
- *                      number of median errors; typically ~3)
- *              max_error (maximum difference in pixels between fitted
- *                         and original location to allow using the
- *                         original value instead of the fitted value)
+ *              factor (reject outliers with widths and heights deviating
+ *                      from the median by more than @factor times
+ *                      the median variation from the median; typically ~3)
+ *              subflag (L_USE_MINSIZE, L_USE_MAXSIZE or L_SUB_ON_BIG_DIFF;
+ *                       see boxaModifyWithBoxa())
+ *              maxdiff (parameter used with L_SUB_ON_BIG_DIFF)
  *              debug (1 for debug output)
  *      Return: boxad (fitted boxa), or null on error
  *
  *  Notes:
- *      (1) This does linear fitting separately to the sequences of
- *          even and odd boxes.  It is assumed that in both the even and
- *          odd sets, the box edges vary slowly and linearly across each set.
+ *      (1) This returns a modified version of @boxas by constructing
+ *          for each input box a box that has been linear least square fit
+ *          (LSF) to the entire set.  The linear fitting is done to each of
+ *          the box sides independently, after outliers are rejected,
+ *          and it is computed separately for sequences of even and
+ *          odd boxes.  Once the linear LSF box is found, the output box
+ *          (in @boxad) is constructed from the input box and the LSF
+ *          box, depending on @subflag.  See boxaModifyWithBoxa() for
+ *          details on the use of @subflag and @maxdiff.
+ *      (2) This is useful if, in both the even and odd sets, the box
+ *          edges vary roughly linearly with its index in the set.
  */
 BOXA *
 boxaSmoothSequence(BOXA      *boxas,
                    l_float32  factor,
-                   l_int32    max_error,
+                   l_int32    subflag,
+                   l_int32    maxdiff,
                    l_int32    debug)
 {
 l_int32  n;
-BOXA    *boxae, *boxao, *boxalfe, *boxalfo, *boxad;
+BOXA    *boxae, *boxao, *boxalfe, *boxalfo, *boxame, *boxamo, *boxad;
 
     PROCNAME("boxaSmoothSequence");
 
     if (!boxas)
         return (BOXA *)ERROR_PTR("boxas not defined", procName, NULL);
-    if ((n = boxaGetCount(boxas)) < 4)
-        return (BOXA *)ERROR_PTR("need at least 4 boxes", procName, NULL);
-
-    boxaSplitEvenOdd(boxas, &boxae, &boxao);
-    if (debug) {
-        boxaWrite("/tmp/boxae.ba", boxae);
-        boxaWrite("/tmp/boxao.ba", boxao);
+    if ((n = boxaGetCount(boxas)) < 4) {
+        L_WARNING("need at least 4 boxes; returning copy\n", procName);
+        return boxaCopy(boxas, L_COPY);
     }
 
-    boxalfe = boxaLinearFit(boxae, factor, max_error, debug);
-    boxalfo = boxaLinearFit(boxao, factor, max_error, debug);
+    boxaSplitEvenOdd(boxas, 1, &boxae, &boxao);
     if (debug) {
-        boxaWrite("/tmp/boxalfe.ba", boxalfe);
-        boxaWrite("/tmp/boxalfo.ba", boxalfo);
+        lept_mkdir("smooth");
+        boxaWrite("/tmp/smooth/boxae.ba", boxae);
+        boxaWrite("/tmp/smooth/boxao.ba", boxao);
     }
 
-    boxad = boxaMergeEvenOdd(boxalfe, boxalfo);
+    boxalfe = boxaLinearFit(boxae, factor, debug);
+    boxalfo = boxaLinearFit(boxao, factor, debug);
+    if (debug) {
+        boxaWrite("/tmp/smooth/boxalfe.ba", boxalfe);
+        boxaWrite("/tmp/smooth/boxalfo.ba", boxalfo);
+    }
+
+    boxame = boxaModifyWithBoxa(boxae, boxalfe, subflag, maxdiff);
+    boxamo = boxaModifyWithBoxa(boxao, boxalfo, subflag, maxdiff);
+    if (debug) {
+        boxaWrite("/tmp/smooth/boxame.ba", boxame);
+        boxaWrite("/tmp/smooth/boxamo.ba", boxamo);
+    }
+
+    boxad = boxaMergeEvenOdd(boxame, boxamo, 1);
     boxaDestroy(&boxae);
     boxaDestroy(&boxao);
     boxaDestroy(&boxalfe);
     boxaDestroy(&boxalfo);
+    boxaDestroy(&boxame);
+    boxaDestroy(&boxamo);
     return boxad;
 }
 
@@ -539,48 +766,39 @@ BOXA    *boxae, *boxao, *boxalfe, *boxalfo, *boxad;
  *  boxaLinearFit()
  *
  *      Input:  boxas (source boxa)
- *              factor (reject outliers with error greater than this
- *                      number of median errors; typically ~3)
- *              max_error (maximum difference in pixels between fitted
- *                         and original location to allow using the
- *                         original value instead of the fitted value)
+ *              factor (reject outliers with widths and heights deviating
+ *                      from the median by more than @factor times
+ *                      the median variation from the median; typically ~3)
  *              debug (1 for debug output)
  *      Return: boxad (fitted boxa), or null on error
  *
  *  Notes:
- *      (1) Suppose you have a boxa where the box edges are expected
- *          to vary slowly and linearly across the set.  These could
+ *      (1) This finds a set of boxes (boxad) where each edge of each box is
+ *          a linear least square fit (LSF) to the edges of the
+ *          input set of boxes (boxas).  Before fitting, outliers in
+ *          the boxes in boxas are removed (see below).
+ *      (2) This is useful when each of the box edges in boxas are expected
+ *          to vary linearly with box index in the set.  These could
  *          be, for example, noisy measurements of similar regions
  *          on successive scanned pages.
- *      (2) Method: there are 2 basic steps:
- *          (a) Find outliers, separately based on the deviation
+ *      (3) Method: there are 2 steps:
+ *          (a) Find and remove outliers, separately based on the deviation
  *              from the median of the width and height of the box.
- *              After the width- and height-based outliers are removed,
- *              do a linear LSF for each of the four sides.  Use
- *              @factor to specify tolerance to outliers; use a very large
- *              value of @factor to avoid rejecting points.
- *          (b) Using the LSF of (a), make the final determination of
- *              the four edge locations.  See (3) for details.
- *      (3) The parameter @max_error makes the input values somewhat sticky.
- *          Use the fitted values only when the difference between input
- *          and fitted value is greater than @max_error.  Two special cases:
- *          (a) set @max_error == 0 to use only fitted values in boxad.
- *          (b) set @max_error == 10000 to ignore all fitted values; then
- *              boxad will be the same as boxas.
- *      (4) Invalid input boxes are not used in computation of the LSF,
- *          and the output boxes are found from the LSF.
- *      (5) To enforce additional constraints on the size of each box,
- *          follow this operation with boxaConstrainSize(), taking boxad
- *          as input.
+ *              Use @factor to specify tolerance to outliers; use a very
+ *              large value of @factor to avoid rejecting any box sides
+ *              in the linear LSF.
+ *          (b) On the remaining boxes, do a linear LSF independently
+ *              for each of the four sides.
+ *      (4) Invalid input boxes are not used in computation of the LSF.
+ *      (5) The returned boxad can then be used in boxaModifyWithBoxa()
+ *          to selectively change the boxes in boxas.
  */
 BOXA *
 boxaLinearFit(BOXA      *boxas,
               l_float32  factor,
-              l_int32    max_error,
               l_int32    debug)
 {
-l_int32    n, i, w, h, left, top, right, bot, lval, tval, rval, bval;
-l_int32    lnew, tnew, rnew, bnew, wnew, hnew, rejectlr, rejecttb;
+l_int32    n, i, w, h, lval, tval, rval, bval, rejectlr, rejecttb;
 l_float32  al, bl, at, bt, ar, br, ab, bb;  /* LSF coefficients */
 l_float32  medw, medh, medvarw, medvarh;
 BOX       *box, *boxempty;
@@ -625,15 +843,15 @@ PTA       *ptal, *ptat, *ptar, *ptab;
             continue;
         }
         boxGetGeometry(box, NULL, NULL, &w, &h);
-        if (L_ABS(w - medw) <= factor * medvarw)
+        if (L_ABS(w - medw) <= factor * medvarw) {
             boxaAddBox(boxalr, box, L_COPY);
-        else {
+        } else {
             rejectlr++;
             boxaAddBox(boxalr, boxempty, L_COPY);
         }
-        if (L_ABS(h - medh) <= factor * medvarh)
+        if (L_ABS(h - medh) <= factor * medvarh) {
             boxaAddBox(boxatb, box, L_COPY);
-        else {
+        } else {
             rejecttb++;
             boxaAddBox(boxatb, boxempty, L_COPY);
         }
@@ -647,10 +865,11 @@ PTA       *ptal, *ptat, *ptar, *ptab;
     }
 
     if (debug) {
-        L_INFO_INT2(procName, "# lr reject = %d, # tb reject = %d",
-                    rejectlr, rejecttb);
-        boxaWrite("/tmp/boxalr.ba", boxalr);
-        boxaWrite("/tmp/boxatb.ba", boxatb);
+        L_INFO("# lr reject = %d, # tb reject = %d\n", procName,
+               rejectlr, rejecttb);
+        lept_mkdir("linfit");
+        boxaWrite("/tmp/linfit/boxalr.ba", boxalr);
+        boxaWrite("/tmp/linfit/boxatb.ba", boxatb);
     }
 
         /* Extract the valid left and right box sides, along with the box
@@ -662,48 +881,39 @@ PTA       *ptal, *ptat, *ptar, *ptab;
     boxaDestroy(&boxatb);
 
     if (debug) {
-        ptaWrite("/tmp/ptal.pta", ptal, 1);
-        ptaWrite("/tmp/ptar.pta", ptar, 1);
-        ptaWrite("/tmp/ptat.pta", ptat, 1);
-        ptaWrite("/tmp/ptab.pta", ptab, 1);
+        ptaWrite("/tmp/linfit/ptal.pta", ptal, 1);
+        ptaWrite("/tmp/linfit/ptar.pta", ptar, 1);
+        ptaWrite("/tmp/linfit/ptat.pta", ptat, 1);
+        ptaWrite("/tmp/linfit/ptab.pta", ptab, 1);
     }
 
-        /* A linear LSF fit to the points that are width and
-         * height validated should work.  So, e.g., we don't need to use
-         *    ptaNoisyLinearLSF(ptal, factor, NULL, &al, &bl, NULL, NULL); */
+        /* Do a linear LSF fit to the points that are width and height
+         * validated.  Because we've eliminated the outliers, there is no
+         * need to use ptaNoisyLinearLSF(ptal, factor, NULL, &al, &bl, ...) */
     ptaGetLinearLSF(ptal, &al, &bl, NULL);
     ptaGetLinearLSF(ptat, &at, &bt, NULL);
     ptaGetLinearLSF(ptar, &ar, &br, NULL);
     ptaGetLinearLSF(ptab, &ab, &bb, NULL);
 
-        /* Use the LSF smoothed values when the error is large. */
+        /* Return the LSF smoothed values, interleaved with invalid
+         * boxes when the corresponding box in boxas is invalid. */
     boxad = boxaCreate(n);
+    boxempty = boxCreate(0, 0, 0, 0);  /* use for placeholders */
     for (i = 0; i < n; i++) {
         lval = (l_int32)(al * i + bl + 0.5);
         tval = (l_int32)(at * i + bt + 0.5);
         rval = (l_int32)(ar * i + br + 0.5);
         bval = (l_int32)(ab * i + bb + 0.5);
-        box = boxaGetValidBox(boxas, i, L_CLONE);
-        if (box) {
-            boxGetGeometry(box, &left, &top, &w, &h);
+        if ((box = boxaGetValidBox(boxas, i, L_CLONE)) == NULL) {
+            boxaAddBox(boxad, boxempty, L_COPY);
+        } else {
             boxDestroy(&box);
-        } else {  /* use something big to force using the LSF value */
-            left = 100000000;
-            top = 100000000;
-            w = 100000000;
-            h = 100000000;
+            box = boxCreate(lval, tval, rval - lval + 1, bval - tval + 1);
+            boxaAddBox(boxad, box, L_INSERT);
         }
-        right = left + w - 1;
-        bot = top + h - 1;
-        lnew = (L_ABS(lval - left) <= max_error) ? left : lval;
-        tnew = (L_ABS(tval - top) <= max_error) ? top : tval;
-        rnew = (L_ABS(rval - right) <= max_error) ? right : rval;
-        bnew = (L_ABS(bval - bot) <= max_error) ? bot : bval;
-        wnew = rnew - lnew + 1;
-        hnew = bnew - tnew + 1;
-        box = boxCreate(lnew, tnew, wnew, hnew);
-        boxaAddBox(boxad, box, L_INSERT);
     }
+    boxDestroy(&boxempty);
+
     if (debug)
         boxaPlotSides(boxad, NULL, NULL, NULL, NULL, NULL, GPLOT_X11);
 
@@ -716,25 +926,141 @@ PTA       *ptal, *ptat, *ptar, *ptab;
 
 
 /*!
+ *  boxaModifyWithBoxa()
+ *
+ *      Input:  boxas
+ *              boxam (boxa with boxes used to modify those in boxas)
+ *              subflag (L_USE_MINSIZE, L_USE_MAXSIZE or L_SUB_ON_BIG_DIFF)
+ *              maxdiff (parameter used with L_SUB_ON_BIG_DIFF)
+ *      Return: boxad (result after adjusting boxes in boxas), or null
+ *                     on error.
+ *
+ *  Notes:
+ *      (1) This takes two input boxa (boxas, boxam) and constructs boxad,
+ *          where each box in boxad is generated from the corresponding
+ *          boxes in boxas and boxam.  The rule for constructing each
+ *          output box depends on @subflag and @maxdiff.
+ *          If @subflag == L_USE_MINSIZE, the output box is the intersection
+ *          of the two input boxes.
+ *          If @subflag == L_USE_MAXSIZE, the output box is the union of the
+ *          two input boxes; i.e., the minimum bounding rectangle for the
+ *          two input boxes.
+ *          If @subflag == L_SUB_ON_BIG_DIFF, each side of the output
+ *          box is given by the side the input box from boxas if it is
+ *          within @maxdiff pixels of the side of the input box from @boxam;
+ *          otherwise, use the latter side.
+ *      (2) boxas and boxam must be the same size.  If boxam == NULL,
+ *          this returns a copy of boxas with a warning.
+ *      (3) If @subflag == L_SUB_ON_BIG_DIFF, the box in boxam is used
+ *          for each side where the corresponding sides differ by more
+ *          than @maxdiff.  Two extreme cases:
+ *          (a) set @maxdiff == 0 to use only values from boxam in boxad.
+ *          (b) set @maxdiff == 10000 to ignore all values from boxam;
+ *              then boxad will be the same as boxas.
+ *      (4) If either of corresponding boxes in boxas and boxam is invalid,
+ *          an invalid box is copied to the result.
+ *      (5) Typical input for boxam may be the output of boxaLinearFit().
+ *          where outliers have been removed and each side is LS fit to a line.
+ *      (6) Unlike boxaAdjustWidthToTarget() and boxaAdjustHeightToTarget(),
+ *          this is not dependent on a difference threshold to change the size.
+ *          Additional constraints on the size of each box can be enforced
+ *          by following this operation with boxaConstrainSize(), taking
+ *          boxad as input.
+ */
+BOXA *
+boxaModifyWithBoxa(BOXA    *boxas,
+                   BOXA    *boxam,
+                   l_int32  subflag,
+                   l_int32  maxdiff)
+{
+l_int32  n, i, ls, ts, rs, bs, ws, hs, lm, tm, rm, bm, wm, hm, ld, td, rd, bd;
+BOX     *boxs, *boxm, *boxd, *boxempty;
+BOXA    *boxad;
+
+    PROCNAME("boxaModifyWithBoxa");
+
+    if (!boxas)
+        return (BOXA *)ERROR_PTR("boxas not defined", procName, NULL);
+    if (!boxam) {
+        L_WARNING("boxam not defined; returning copy", procName);
+        return boxaCopy(boxas, L_COPY);
+    }
+    if (subflag != L_USE_MINSIZE && subflag != L_USE_MAXSIZE &&
+        subflag != L_SUB_ON_BIG_DIFF) {
+        L_WARNING("invalid subflag; returning copy", procName);
+        return boxaCopy(boxas, L_COPY);
+    }
+    n = boxaGetCount(boxas);
+    if (n != boxaGetCount(boxam)) {
+        L_WARNING("boxas and boxam sizes differ; returning copy", procName);
+        return boxaCopy(boxas, L_COPY);
+    }
+
+    boxad = boxaCreate(n);
+    boxempty = boxCreate(0, 0, 0, 0);  /* placeholders */
+    for (i = 0; i < n; i++) {
+        boxs = boxaGetValidBox(boxas, i, L_CLONE);
+        boxm = boxaGetValidBox(boxam, i, L_CLONE);
+        if (!boxs || !boxm) {
+            boxaAddBox(boxad, boxempty, L_COPY);
+        } else {
+            boxGetGeometry(boxs, &ls, &ts, &ws, &hs);
+            boxGetGeometry(boxm, &lm, &tm, &wm, &hm);
+            boxDestroy(&boxs);
+            boxDestroy(&boxm);
+            rs = ls + ws - 1;
+            bs = ts + hs - 1;
+            rm = lm + wm - 1;
+            bm = tm + hm - 1;
+            if (subflag == L_USE_MINSIZE) {
+                ld = L_MAX(ls, lm);
+                rd = L_MIN(rs, rm);
+                td = L_MAX(ts, tm);
+                bd = L_MIN(bs, bm);
+            } else if (subflag == L_USE_MAXSIZE) {
+                ld = L_MIN(ls, lm);
+                rd = L_MAX(rs, rm);
+                td = L_MIN(ts, tm);
+                bd = L_MAX(bs, bm);
+            } else {  /* subflag == L_SUB_ON_BIG_DIFF */
+                ld = (L_ABS(lm - ls) <= maxdiff) ? ls : lm;
+                td = (L_ABS(tm - ts) <= maxdiff) ? ts : tm;
+                rd = (L_ABS(rm - rs) <= maxdiff) ? rs : rm;
+                bd = (L_ABS(bm - bs) <= maxdiff) ? bs : bm;
+            }
+            boxd = boxCreate(ld, td, rd - ld + 1, bd - td + 1);
+            boxaAddBox(boxad, boxd, L_INSERT);
+        }
+    }
+    boxDestroy(&boxempty);
+
+    return boxad;
+}
+
+
+/*!
  *  boxaConstrainSize()
  *
  *      Input:  boxas
  *              width (force width of all boxes to this size;
  *                     input 0 to use the median width)
- *              widthflag (L_ADJUST_LEFT, L_ADJUST_RIGHT,
+ *              widthflag (L_ADJUST_SKIP, L_ADJUST_LEFT, L_ADJUST_RIGHT,
  *                         or L_ADJUST_LEFT_AND_RIGHT)
  *              height (force height of all boxes to this size;
  *                      input 0 to use the median height)
- *              heightflag (L_ADJUST_TOP, L_ADJUST_BOT, or L_ADJUST_TOP_AND_BOT)
+ *              heightflag (L_ADJUST_SKIP, L_ADJUST_TOP, L_ADJUST_BOT,
+ *                          or L_ADJUST_TOP_AND_BOT)
  *      Return: boxad (adjusted so all boxes are the same size)
  *
  *  Notes:
- *      (1) Typical input might be the output of boxaLinearFit(),
- *          where each side has been fit.  This alters the
- *          width and height to the given value, moving the
- *          sides either in or out.
+ *      (1) Forces either width or height (or both) of every box in
+ *          the boxa to a specified size, by moving the indicated sides.
  *      (2) All input boxes should be valid.  Median values will be
  *          used with invalid boxes.
+ *      (3) Typical input might be the output of boxaLinearFit(),
+ *          where each side has been fit.
+ *      (4) Unlike boxaAdjustWidthToTarget() and boxaAdjustHeightToTarget(),
+ *          this is not dependent on a difference threshold to change the size.
  */
 BOXA *
 boxaConstrainSize(BOXA    *boxas,
@@ -767,26 +1093,26 @@ BOXA    *boxad;
     for (i = 0; i < n; i++) {
         boxs = boxaGetValidBox(boxas, i, L_CLONE);
         if (!boxs) {
-            L_ERROR_INT("invalid box %d; using median", procName, i);
+            L_ERROR("invalid box %d; using median\n", procName, i);
             boxs = boxCopy(medbox);
         }
         boxGetGeometry(boxs, NULL, NULL, &w, &h);
         delw = width - w;
         delh = height - h;
         del_left = del_right = del_top = del_bot = 0;
-        if (widthflag == L_ADJUST_LEFT)
+        if (widthflag == L_ADJUST_LEFT) {
             del_left = -delw;
-        else if (widthflag == L_ADJUST_RIGHT)
+        } else if (widthflag == L_ADJUST_RIGHT) {
             del_right = delw;
-        else {
+        } else {
             del_left = -delw / 2;
             del_right = delw / 2 + L_SIGN(delw) * (delw & 1);
         }
-        if (heightflag == L_ADJUST_TOP)
+        if (heightflag == L_ADJUST_TOP) {
             del_top = -delh;
-        else if (heightflag == L_ADJUST_BOT)
+        } else if (heightflag == L_ADJUST_BOT) {
             del_bot = delh;
-        else {
+        } else {
             del_top = -delh / 2;
             del_bot = delh / 2 + L_SIGN(delh) * (delh & 1);
         }
@@ -797,6 +1123,121 @@ BOXA    *boxad;
     }
 
     boxDestroy(&medbox);
+    return boxad;
+}
+
+
+/*!
+ *  boxaReconcileEvenOddHeight()
+ *
+ *      Input:  boxas (containing at least 3 valid boxes in even and odd)
+ *              sides (L_ADJUST_TOP, L_ADJUST_BOT, L_ADJUST_TOP_AND_BOT)
+ *              delh (threshold on median height difference)
+ *              op (L_ADJUST_CHOOSE_MIN, L_ADJUST_CHOOSE_MAX)
+ *              factor (> 0.0, typically near 1.0)
+ *      Return: boxad (adjusted)
+ *
+ *  Notes:
+ *      (1) The basic idea is to reconcile differences in box height
+ *          in the even and odd boxes, by moving the top and/or bottom
+ *          edges in the even and odd boxes.  Choose the edge or edges
+ *          to be moved, whether to adjust the boxes with the min
+ *          or the max of the medians, and the threshold on the median
+ *          difference between even and odd box heights for the operations
+ *          to take place.  The same threshold is also used to
+ *          determine if each individual box edge is to be adjusted.
+ *      (2) Boxes are conditionally reset with either the same top (y)
+ *          value or the same bottom value, or both.  The value is
+ *          determined by the greater or lesser of the medians of the
+ *          even and odd boxes, with the choice depending on the value
+ *          of @op, which selects for either min or max median height.
+ *          If the median difference between even and odd boxes is
+ *          greater than @dely, then any individual box edge that differs
+ *          from the selected median by more than @dely is set to
+ *          the selected median times a factor typically near 1.0.
+ *      (3) Note that if selecting for minimum height, you will choose
+ *          the largest y-value for the top and the smallest y-value for
+ *          the bottom of the box.
+ *      (4) Typical input might be the output of boxaSmoothSequence(),
+ *          where even and odd boxa have been independently regulated.
+ *      (5) Require at least 3 valid even boxes and 3 valid odd boxes.
+ *          Median values will be used for invalid boxes.
+ */
+BOXA *
+boxaReconcileEvenOddHeight(BOXA      *boxas,
+                           l_int32    sides,
+                           l_int32    delh,
+                           l_int32    op,
+                           l_float32  factor)
+{
+l_int32  n, ne, no, he, ho, hmed, doeven;
+BOX     *boxe, *boxo;
+BOXA    *boxae, *boxao, *boxa1e, *boxa1o, *boxad;
+
+    PROCNAME("boxaReconcileEvenOddHeight");
+
+    if (!boxas)
+        return (BOXA *)ERROR_PTR("boxas not defined", procName, NULL);
+    if (sides != L_ADJUST_TOP && sides != L_ADJUST_BOT &&
+        sides != L_ADJUST_TOP_AND_BOT) {
+        L_WARNING("no action requested; returning copy\n", procName);
+        return boxaCopy(boxas, L_COPY);
+    }
+    if ((n = boxaGetValidCount(boxas)) < 6) {
+        L_WARNING("need at least 6 valid boxes; returning copy\n", procName);
+        return boxaCopy(boxas, L_COPY);
+    }
+    if (factor <= 0.0) {
+        L_WARNING("invalid factor; setting to 1.0\n", procName);
+        factor = 1.0;
+    }
+
+        /* Require at least 3 valid boxes of both types */
+    boxaSplitEvenOdd(boxas, 0, &boxae, &boxao);
+    if (boxaGetValidCount(boxae) < 3 || boxaGetValidCount(boxao) < 3) {
+        boxaDestroy(&boxae);
+        boxaDestroy(&boxao);
+        return boxaCopy(boxas, L_COPY);
+    }
+    ne = boxaGetCount(boxae);
+    no = boxaGetCount(boxao);
+
+        /* Get the median heights for each set */
+    boxa1e = boxaSort(boxae, L_SORT_BY_HEIGHT, L_SORT_INCREASING, NULL);
+    boxa1o = boxaSort(boxao, L_SORT_BY_HEIGHT, L_SORT_INCREASING, NULL);
+    boxe = boxaGetBox(boxa1e, ne / 2, L_COPY);  /* median ht even boxes */
+    boxo = boxaGetBox(boxa1o, no / 2, L_COPY);  /* median ht odd boxes */
+    boxGetGeometry(boxe, NULL, NULL, NULL, &he);
+    boxGetGeometry(boxo, NULL, NULL, NULL, &ho);
+    boxaDestroy(&boxa1e);
+    boxaDestroy(&boxa1o);
+    boxDestroy(&boxe);
+    boxDestroy(&boxo);
+    L_INFO("median he = %d, median ho = %d\n", procName, he, ho);
+
+        /* If the difference in median height reaches the threshold @delh,
+         * only adjust the side(s) of one of the sets.  If we choose
+         * the minimum median height as the target, allow the target
+         * to be scaled by a factor, typically near 1.0, of the
+         * minimum median height.  And similarly if the target is
+         * the maximum median height. */
+    if (L_ABS(he - ho) > delh) {
+        if (op == L_ADJUST_CHOOSE_MIN) {
+            doeven = (ho < he) ? TRUE : FALSE;
+            hmed = (l_int32)(factor * L_MIN(he, ho));
+            hmed = L_MIN(hmed, L_MAX(he, ho));  /* don't make it bigger! */
+        } else {  /* max height */
+            doeven = (ho > he) ? TRUE : FALSE;
+            hmed = (l_int32)(factor * L_MAX(he, ho));
+            hmed = L_MAX(hmed, L_MIN(he, ho));  /* don't make it smaller! */
+        }
+        if (doeven) boxaAdjustHeightToTarget(boxae, boxae, sides, hmed, delh);
+        if (!doeven) boxaAdjustHeightToTarget(boxao, boxao, sides, hmed, delh);
+    }
+
+    boxad = boxaMergeEvenOdd(boxae, boxao, 0);
+    boxaDestroy(&boxae);
+    boxaDestroy(&boxao);
     return boxad;
 }
 
@@ -822,8 +1263,8 @@ BOXA    *boxad;
  *          (b) only the odd indices have valid boxes
  *          (c) all indices have valid boxes
  *          This condition is determined by looking at the first 2 boxes.
- *      (3) The plotfiles are put in /tmp, and are named either with
- *          @plotname or, if NULL, a default name.
+ *      (3) The plotfiles are put in /tmp/plotsides, and are named either
+ *          with @plotname or, if NULL, a default name.
  */
 l_int32
 boxaPlotSides(BOXA        *boxa,
@@ -860,8 +1301,7 @@ NUMA           *nal, *nat, *nar, *nab;
     if (!boxe) {
         startx = 1;
         delx = 2;
-    }
-    else if (!boxo) {
+    } else if (!boxo) {
         startx = 0;
         delx = 2;
     }
@@ -874,10 +1314,10 @@ NUMA           *nal, *nat, *nar, *nab;
     nar = numaCreate(n);
     nab = numaCreate(n);
     if (delx == 2) {
-        numaSetXParameters(nal, startx, delx);
-        numaSetXParameters(nat, startx, delx);
-        numaSetXParameters(nar, startx, delx);
-        numaSetXParameters(nab, startx, delx);
+        numaSetParameters(nal, startx, delx);
+        numaSetParameters(nat, startx, delx);
+        numaSetParameters(nar, startx, delx);
+        numaSetParameters(nab, startx, delx);
     }
 
     for (i = 0; i < n; i++) {
@@ -895,15 +1335,16 @@ NUMA           *nal, *nat, *nar, *nab;
 
         /* Plot them */
     if (outformat < 0 || outformat > GPLOT_LATEX) {
-        L_ERROR("invalid gplot format", procName);
+        L_ERROR("invalid gplot format\n", procName);
         outformat = 0;
     }
 
     if (outformat > 0) {
+        lept_mkdir("plotsides");
         if (plotname)
-            snprintf(buf, sizeof(buf), "/tmp/%s", plotname);
+            snprintf(buf, sizeof(buf), "/tmp/plotsides/%s", plotname);
         else
-            snprintf(buf, sizeof(buf), "/tmp/boxsides.%d", plotid++);
+            snprintf(buf, sizeof(buf), "/tmp/plotsides/sides.%d", plotid++);
         gplot = gplotCreate(buf, outformat, "Box sides vs. box index",
                             "box index", "box location");
         gplotAddPlot(gplot, NULL, nal, GPLOT_LINES, "left side");
@@ -950,7 +1391,7 @@ NUMA           *nal, *nat, *nar, *nab;
  *  Notes:
  *      (1) The returned w and h are the minimum size image
  *          that would contain all boxes untranslated.
- *      (2) If there are no boxes, returned w and h are 0 and
+ *      (2) If there are no valid boxes, returned w and h are 0 and
  *          all parameters in the returned box are 0.  This
  *          is not an error, because an empty boxa is valid and
  *          boxaGetExtent() is required for serialization.
@@ -961,7 +1402,7 @@ boxaGetExtent(BOXA     *boxa,
               l_int32  *ph,
               BOX     **pbox)
 {
-l_int32  i, n, x, y, w, h, xmax, ymax, xmin, ymin;
+l_int32  i, n, x, y, w, h, xmax, ymax, xmin, ymin, found;
 
     PROCNAME("boxaGetExtent");
 
@@ -976,14 +1417,18 @@ l_int32  i, n, x, y, w, h, xmax, ymax, xmin, ymin;
     n = boxaGetCount(boxa);
     xmax = ymax = 0;
     xmin = ymin = 100000000;
+    found = FALSE;
     for (i = 0; i < n; i++) {
         boxaGetBoxGeometry(boxa, i, &x, &y, &w, &h);
+        if (w <= 0 || h <= 0)
+            continue;
+        found = TRUE;
         xmin = L_MIN(xmin, x);
         ymin = L_MIN(ymin, y);
         xmax = L_MAX(xmax, x + w);
         ymax = L_MAX(ymax, y + h);
     }
-    if (n == 0)
+    if (found == FALSE)  /* no valid boxes in boxa */
         xmin = ymin = 0;
     if (pw) *pw = xmax;
     if (ph) *ph = ymax;
@@ -1049,8 +1494,7 @@ PIX     *pixt;
             }
             boxDestroy(&box);
         }
-    }
-    else {  /* slower and exact */
+    } else {  /* slower and exact */
         pixt = pixCreate(wc, hc, 1);
         for (i = 0; i < n; i++) {
             box = boxaGetBox(boxa, i, L_CLONE);
@@ -1063,6 +1507,55 @@ PIX     *pixt;
     }
 
     *pfract = (l_float32)sum / (l_float32)(wc * hc);
+    return 0;
+}
+
+
+/*!
+ *  boxaaSizeRange()
+ *
+ *      Input:  baa
+ *              &minw, &minh, &maxw, &maxh (<optional return> range of
+ *                                          dimensions of all boxes)
+ *      Return: 0 if OK, 1 on error
+ */
+l_int32
+boxaaSizeRange(BOXAA    *baa,
+               l_int32  *pminw,
+               l_int32  *pminh,
+               l_int32  *pmaxw,
+               l_int32  *pmaxh)
+{
+l_int32  minw, minh, maxw, maxh, minbw, minbh, maxbw, maxbh, i, n;
+BOXA    *boxa;
+
+    PROCNAME("boxaaSizeRange");
+
+    if (!baa)
+        return ERROR_INT("baa not defined", procName, 1);
+    if (!pminw && !pmaxw && !pminh && !pmaxh)
+        return ERROR_INT("no data can be returned", procName, 1);
+
+    minw = minh = 100000000;
+    maxw = maxh = 0;
+    n = boxaaGetCount(baa);
+    for (i = 0; i < n; i++) {
+        boxa = boxaaGetBoxa(baa, i, L_CLONE);
+        boxaSizeRange(boxa, &minbw, &minbh, &maxbw, &maxbh);
+        if (minbw < minw)
+            minw = minbw;
+        if (minbh < minh)
+            minh = minbh;
+        if (maxbw > maxw)
+            maxw = maxbw;
+        if (maxbh > maxh)
+            maxh = maxbh;
+    }
+
+    if (pminw) *pminw = minw;
+    if (pminh) *pminh = minh;
+    if (pmaxw) *pmaxw = maxw;
+    if (pmaxh) *pmaxh = maxh;
     return 0;
 }
 
@@ -1110,7 +1603,6 @@ l_int32  minw, minh, maxw, maxh, i, n, w, h;
     if (pminh) *pminh = minh;
     if (pmaxw) *pmaxw = maxw;
     if (pmaxh) *pmaxh = maxh;
-
     return 0;
 }
 
@@ -1161,3 +1653,148 @@ l_int32  minx, miny, maxx, maxy, i, n, x, y;
 
     return 0;
 }
+
+
+/*!
+ *  boxaGetArea()
+ *
+ *      Input:  boxa
+ *              &area (<return> total area of all boxes)
+ *      Return: 0 if OK, 1 on error
+ *
+ *  Notes:
+ *      (1) Measures the total area of the boxes, without regard to overlaps.
+ */
+l_int32
+boxaGetArea(BOXA     *boxa,
+            l_int32  *parea)
+{
+l_int32  i, n, w, h;
+
+    PROCNAME("boxaGetArea");
+
+    if (!parea)
+        return ERROR_INT("&area not defined", procName, 1);
+    *parea = 0;
+    if (!boxa)
+        return ERROR_INT("boxa not defined", procName, 1);
+
+    n = boxaGetCount(boxa);
+    for (i = 0; i < n; i++) {
+        boxaGetBoxGeometry(boxa, i, NULL, NULL, &w, &h);
+        *parea += w * h;
+    }
+    return 0;
+}
+
+
+/*!
+ *  boxaDisplayTiled()
+ *
+ *      Input:  boxa
+ *              pixa (<optional> background for each box)
+ *              maxwidth (of output image)
+ *              linewidth (width of box outlines, before scaling)
+ *              scalefactor (applied to every box; use 1.0 for no scaling)
+ *              background (0 for white, 1 for black; this is the color
+ *                          of the spacing between the images)
+ *              spacing  (between images, and on outside)
+ *              border (width of black border added to each image;
+ *                      use 0 for no border)
+ *              fontdir (<optional> can be NULL; use to number the boxes)
+ *      Return: pixd (of tiled images of boxes), or null on error
+ *
+ *  Notes:
+ *      (1) Displays each box separately in a tiled 32 bpp image.
+ *      (2) If pixa is defined, it must have the same count as the boxa,
+ *          and it will be a background over with each box is rendered.
+ *          If pixa is not defined, the boxes will be rendered over
+ *          blank images of identical size.
+ *      (3) See pixaDisplayTiledInRows() for other parameters.
+ */
+PIX *
+boxaDisplayTiled(BOXA        *boxas,
+                 PIXA        *pixa,
+                 l_int32      maxwidth,
+                 l_int32      linewidth,
+                 l_float32    scalefactor,
+                 l_int32      background,
+                 l_int32      spacing,
+                 l_int32      border,
+                 const char  *fontdir)
+{
+char     buf[32];
+l_int32  i, n, npix, w, h, fontsize;
+L_BMF   *bmf;
+BOX     *box;
+BOXA    *boxa;
+PIX     *pix1, *pix2, *pixd;
+PIXA    *pixat;
+
+    PROCNAME("boxaDisplayTiled");
+
+    if (!boxas)
+        return (PIX *)ERROR_PTR("boxas not defined", procName, NULL);
+
+    boxa = boxaSaveValid(boxas, L_COPY);
+    n = boxaGetCount(boxa);
+    if (pixa) {
+        npix = pixaGetCount(pixa);
+        if (n != npix) {
+            boxaDestroy(&boxa);
+            return (PIX *)ERROR_PTR("boxa and pixa counts differ",
+                                    procName, NULL);
+        }
+    }
+
+        /* Because the bitmap font will be reduced when tiled, choose the
+         * font size inversely with the scale factor. */
+    if (scalefactor > 0.8)
+        fontsize = 6;
+    else if (scalefactor > 0.6)
+        fontsize = 10;
+    else if (scalefactor > 0.4)
+        fontsize = 14;
+    else if (scalefactor > 0.3)
+        fontsize = 18;
+    else fontsize = 20;
+    bmf = NULL;
+    if (fontdir) {
+        if ((bmf = bmfCreate(fontdir, fontsize)) == NULL) {
+            L_ERROR("can't find fonts; skipping them\n", procName);
+            fontdir = NULL;
+        }
+    }
+
+    pixat = pixaCreate(n);
+    boxaGetExtent(boxa, &w, &h, NULL);
+    for (i = 0; i < n; i++) {
+        box = boxaGetBox(boxa, i, L_CLONE);
+        if (!pixa) {
+            pix1 = pixCreate(w, h, 32);
+            pixSetAll(pix1);
+        } else {
+            pix1 = pixaGetPix(pixa, i, L_COPY);
+        }
+        if (fontdir) {
+            pixSetBorderVal(pix1, 0, 0, 0, 2, 0x0000ff00);
+            snprintf(buf, sizeof(buf), "%d", i);
+            pix2 = pixAddSingleTextblock(pix1, bmf, buf, 0x00ff0000,
+                                         L_ADD_BELOW, NULL);
+        } else {
+            pix2 = pixClone(pix1);
+        }
+        pixDestroy(&pix1);
+        pixRenderBoxArb(pix2, box, linewidth, 255, 0, 0);
+        pixaAddPix(pixat, pix2, L_INSERT);
+        boxDestroy(&box);
+    }
+    bmfDestroy(&bmf);
+    boxaDestroy(&boxa);
+
+    pixd = pixaDisplayTiledInRows(pixat, 32, maxwidth, scalefactor, background,
+                                  spacing, border);
+    pixaDestroy(&pixat);
+    return pixd;
+}
+

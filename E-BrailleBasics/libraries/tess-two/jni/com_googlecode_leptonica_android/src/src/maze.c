@@ -135,7 +135,7 @@ static l_int32 localSearchForBackground(PIX  *pix, l_int32  *px,
  *                0.70         0.19
  *                0.75         0.15
  *                0.80         0.11
- *      (3) Because here is a considerable amount of overhead in calling
+ *      (3) Because there is a considerable amount of overhead in calling
  *          pixGetPixel() and pixSetPixel(), this function can be sped
  *          up with little effort using raster line pointers and the
  *          GET_DATA* and SET_DATA* macros.
@@ -211,8 +211,7 @@ L_QUEUE   *lq;
                     testp = wallpf;
                 if (frand <= testp) {  /* make it a wall */
                     pixSetPixel(pixd, x - 1, y, 1);
-                }
-                else {  /* not a wall */
+                } else {  /* not a wall */
                     el = mazeelCreate(x - 1, y, DIR_WEST);
                     lqueueAdd(lq, el);
                 }
@@ -228,8 +227,7 @@ L_QUEUE   *lq;
                     testp = wallpf;
                 if (frand <= testp) {  /* make it a wall */
                     pixSetPixel(pixd, x, y - 1, 1);
-                }
-                else {  /* not a wall */
+                } else {  /* not a wall */
                     el = mazeelCreate(x, y - 1, DIR_NORTH);
                     lqueueAdd(lq, el);
                 }
@@ -245,8 +243,7 @@ L_QUEUE   *lq;
                     testp = wallpf;
                 if (frand <= testp) {  /* make it a wall */
                     pixSetPixel(pixd, x + 1, y, 1);
-                }
-                else {  /* not a wall */
+                } else {  /* not a wall */
                     el = mazeelCreate(x + 1, y, DIR_EAST);
                     lqueueAdd(lq, el);
                 }
@@ -262,8 +259,7 @@ L_QUEUE   *lq;
                     testp = wallpf;
                 if (frand <= testp) {  /* make it a wall */
                     pixSetPixel(pixd, x, y + 1, 1);
-                }
-                else {  /* not a wall */
+                } else {  /* not a wall */
                     el = mazeelCreate(x, y + 1, DIR_SOUTH);
                     lqueueAdd(lq, el);
                 }
@@ -320,7 +316,7 @@ MAZEEL *el;
  *            We use a queue to implement a breadth-first search.  Two auxiliary
  *          "image" data structures can be used: one to mark the visited
  *          pixels and one to give the direction to the parent for each
- *          visited pixels.  The first structure is used to avoid putting
+ *          visited pixel.  The first structure is used to avoid putting
  *          pixels on the queue more than once, and the second is used
  *          for retracing back to the origin, like the breadcrumbs in
  *          Hansel and Gretel.  Each pixel taken off the queue is destroyed
@@ -329,7 +325,7 @@ MAZEEL *el;
  *          to some value that signifies "not yet visited."  (We use
  *          a binary image for marking visited pixels because it is clearer.)
  *          This method for a simple search of a binary maze is implemented in
- *          searchBinaryMaze().
+ *          pixSearchBinaryMaze().
  *            An alternative method would store the (manhattan) distance
  *          from the start point with each pixel on the queue.  The children
  *          of each pixel get a distance one larger than the parent.  These
@@ -472,23 +468,8 @@ PTA       *pta;
     composeRGBPixel(0, 255, 0, &gpixel);
     composeRGBPixel(0, 0, 255, &bpixel);  /* end point */
 
-
-    if (!found) {
-        L_INFO(" No path found", procName);
-        if (pixd) {  /* paint all visited locations */
-            lined32 = pixGetLinePtrs(pixd, NULL);
-            for (i = 0; i < h; i++) {
-                for (j = 0; j < w; j++) {
-                    val = GET_DATA_BYTE(linep8[i], j);
-                    if (val != 0 && pixd)
-                        SET_DATA_FOUR_BYTES(lined32[i], j, gpixel);
-                }
-            }
-            FREE(lined32);
-        }
-    }
-    else {   /* write path onto pixd */
-        L_INFO(" Path found", procName);
+    if (found) {
+        L_INFO(" Path found\n", procName);
         pta = ptaCreate(0);
         x = xf;
         y = yf;
@@ -496,7 +477,7 @@ PTA       *pta;
             ptaAddPt(pta, x, y);
             if (x == xi && y == yi)
                 break;
-            if (pixd)
+            if (pixd)  /* write 'gpixel' onto the path */
                 pixSetPixel(pixd, x, y, gpixel);
             pixGetPixel(pixp, x, y, &val);
             if (val == DIR_NORTH)
@@ -507,6 +488,19 @@ PTA       *pta;
                 x++;
             else if (val == DIR_WEST)
                 x--;
+        }
+    } else {
+        L_INFO(" No path found\n", procName);
+        if (pixd) {  /* paint all visited locations */
+            lined32 = pixGetLinePtrs(pixd, NULL);
+            for (i = 0; i < h; i++) {
+                for (j = 0; j < w; j++) {
+                    val = GET_DATA_BYTE(linep8[i], j);
+                    if (val != 0 && pixd)
+                        SET_DATA_FOUR_BYTES(lined32[i], j, gpixel);
+                }
+            }
+            FREE(lined32);
         }
     }
     if (pixd) {
@@ -1013,16 +1007,13 @@ PIX       *pixw, *pixh;  /* keeps the width and height for the largest */
             if ((val ^ polarity) == 0) {  /* bg (0) if polarity == 0, etc. */
                 if (i == 0 && j == 0) {
                     wp = hp = 1;
-                }
-                else if (i == 0) {
+                } else if (i == 0) {
                     wp = linew[i][j - 1] + 1;
                     hp = 1;
-                }
-                else if (j == 0) {
+                } else if (j == 0) {
                     wp = 1;
                     hp = lineh[i - 1][j] + 1;
-                }
-                else {
+                } else {
                         /* Expand #1 prev rectangle down */
                     w1 = linew[i - 1][j];
                     h1 = lineh[i - 1][j];
@@ -1040,14 +1031,12 @@ PIX       *pixw, *pixh;  /* keeps the width and height for the largest */
                     if (area1 > area2) {
                          wp = wmin;
                          hp = h1 + 1;
-                    }
-                    else {
+                    } else {
                          wp = w2 + 1;
                          hp = hmin;
                     }
                 }
-            }
-            else {  /* fg (1) if polarity == 0; bg (0) if polarity == 1 */
+            } else {  /* fg (1) if polarity == 0; bg (0) if polarity == 1 */
                 prevfg = j;
                 lowestfg[j] = i;
                 wp = hp = 0;

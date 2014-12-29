@@ -94,6 +94,10 @@ FLOAT32 Classify::ComputeNormMatch(CLASS_ID ClassId,
   PROTOTYPE *Proto;
   int ProtoId;
 
+  if (ClassId >= NormProtos->NumProtos) {
+    ClassId = NO_CLASS;
+  }
+
   /* handle requests for classification as noise */
   if (ClassId == NO_CLASS) {
     /* kludge - clean up constants and make into control knobs later */
@@ -259,7 +263,7 @@ NORM_PROTOS *Classify::ReadNormProtos(FILE *File, inT64 end_offset) {
 
   /* read protos for each class into a separate list */
   while ((end_offset < 0 || ftell(File) < end_offset) &&
-         fscanf(File, "%s %d", unichar, &NumProtos) == 2) {
+         tfscanf(File, "%s %d", unichar, &NumProtos) == 2) {
     if (unicharset.contains_unichar(unichar)) {
       unichar_id = unicharset.unichar_to_id(unichar);
       Protos = NormProtos->Protos[unichar_id];

@@ -111,7 +111,7 @@ public class Binarize {
         if (pixs.getDepth() != 8)
             throw new IllegalArgumentException("Source pix depth must be 8bpp");
 
-        int nativePix = nativeOtsuAdaptiveThreshold(
+        long nativePix = nativeOtsuAdaptiveThreshold(
                 pixs.mNativePix, sizeX, sizeY, smoothX, smoothY, scoreFraction);
 
         if (nativePix == 0)
@@ -126,7 +126,7 @@ public class Binarize {
      * Notes:
      * <ol>
      * <li> The window width and height are 2 * whsize + 1.  The minimum
-     * value for whsize is 2; typically it is >= 7..
+     * value for whsize is 2; typically it is >= 7.
      * <li> For nx == ny == 1, this defaults to pixSauvolaBinarize().
      * <li> Why a tiled version?
      * (a) Because the mean value accumulator is a uint32, overflow
@@ -155,7 +155,7 @@ public class Binarize {
      * @param factor Factor for reducing threshold due to variance; >= 0
      * @param nx Subdivision into tiles; >= 1
      * @param ny Subdivision into tiles; >= 1
-     * @return A 1 bpp thresholded PIX image.r
+     * @return A 1 bpp thresholded PIX image.
      */
     public static Pix sauvolaBinarizeTiled(Pix pixs, int whsize, float factor, int nx, int ny) {
         if (pixs == null)
@@ -163,7 +163,7 @@ public class Binarize {
         if (pixs.getDepth() != 8)
             throw new IllegalArgumentException("Source pix depth must be 8bpp");
         
-        int nativePix = nativeSauvolaBinarizeTiled(pixs.mNativePix, whsize, factor, nx, ny);
+        long nativePix = nativeSauvolaBinarizeTiled(pixs.mNativePix, whsize, factor, nx, ny);
         
         if (nativePix == 0)
             throw new RuntimeException("Failed to perform Otsu adaptive threshold on image");
@@ -175,9 +175,9 @@ public class Binarize {
     // * NATIVE CODE *
     // ***************
 
-    private static native int nativeOtsuAdaptiveThreshold(
-            int nativePix, int sizeX, int sizeY, int smoothX, int smoothY, float scoreFract);
+    private static native long nativeOtsuAdaptiveThreshold(
+            long nativePix, int sizeX, int sizeY, int smoothX, int smoothY, float scoreFract);
 
-    private static native int nativeSauvolaBinarizeTiled(
-    		int nativePix, int whsize, float factor, int nx, int ny);
+    private static native long nativeSauvolaBinarizeTiled(
+            long nativePix, int whsize, float factor, int nx, int ny);
 }

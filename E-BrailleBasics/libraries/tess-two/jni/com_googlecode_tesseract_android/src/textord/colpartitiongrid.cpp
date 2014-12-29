@@ -17,6 +17,10 @@
 //
 ///////////////////////////////////////////////////////////////////////
 
+#ifdef HAVE_CONFIG_H
+#include "config_auto.h"
+#endif
+
 #include "colpartitiongrid.h"
 #include "colpartitionset.h"
 #include "imagefind.h"
@@ -1076,7 +1080,7 @@ void ColPartitionGrid::FindFigureCaptions() {
         for (partner_it.mark_cycle_pt(); !partner_it.cycled_list();
              partner_it.forward()) {
           ColPartition* partner = partner_it.data();
-          if (!partner->IsTextType()) continue;
+          if (!partner->IsTextType() || partner->type() == PT_TABLE) continue;
           const TBOX& partner_box = partner->bounding_box();
           if (debug) {
             tprintf("Finding figure captions for image part:");

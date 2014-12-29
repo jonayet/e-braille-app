@@ -83,13 +83,16 @@ ScrollView* ColumnFinder::blocks_win_ = NULL;
 // the sum logical vertical vector produced by LineFinder::FindVerticalLines.
 ColumnFinder::ColumnFinder(int gridsize,
                            const ICOORD& bleft, const ICOORD& tright,
-                           int resolution,
+                           int resolution, bool cjk_script,
+                           double aligned_gap_fraction,
                            TabVector_LIST* vlines, TabVector_LIST* hlines,
                            int vertical_x, int vertical_y)
   : TabFind(gridsize, bleft, tright, vlines, vertical_x, vertical_y,
             resolution),
+    cjk_script_(cjk_script),
     min_gutter_width_(static_cast<int>(kMinGutterWidthGrid * gridsize)),
     mean_column_gap_(tright.x() - bleft.x()),
+    tabfind_aligned_gap_fraction_(aligned_gap_fraction),
     reskew_(1.0f, 0.0f), rotation_(1.0f, 0.0f), rerotate_(1.0f, 0.0f),
     best_columns_(NULL), stroke_width_(NULL),
     part_grid_(gridsize, bleft, tright), nontext_map_(NULL),
@@ -169,10 +172,7 @@ void ColumnFinder::SetupAndFilterNoise(Pix* photo_mask_pix,
   // Remove obvious noise and make the initial non-text map.
   nontext_map_ = nontext_detect.ComputeNonTextMask(textord_debug_tabfind,
                                                    photo_mask_pix, input_block);
-  // TODO(rays) experiment with making broken CJK fixing dependent on the
-  // language, and keeping the merged blobs on output instead of exploding at
-  // ColPartition::MakeBlock.
-  stroke_width_->FindTextlineDirectionAndFixBrokenCJK(true, input_block);
+  stroke_width_->FindTextlineDirectionAndFixBrokenCJK(cjk_script_, input_block);
   // Clear the strokewidth grid ready for rotation or leader finding.
   stroke_width_->Clear();
 }
@@ -186,9 +186,11 @@ void ColumnFinder::SetupAndFilterNoise(Pix* photo_mask_pix,
 // is vertical, like say Japanese, or due to text whose writing direction is
 // horizontal but whose text appears vertically aligned because the image is
 // not the right way up.
-bool ColumnFinder::IsVerticallyAlignedText(TO_BLOCK* block,
+bool ColumnFinder::IsVerticallyAlignedText(double find_vertical_text_ratio,
+                                           TO_BLOCK* block,
                                            BLOBNBOX_CLIST* osd_blobs) {
-  return stroke_width_->TestVerticalTextDirection(block, osd_blobs);
+  return stroke_width_->TestVerticalTextDirection(find_vertical_text_ratio,
+                                                  block, osd_blobs);
 }
 
 // Rotates the blobs and the TabVectors so that the gross writing direction
@@ -262,7 +264,7 @@ void ColumnFinder::CorrectOrientation(TO_BLOCK* block,
   // Setup the denormalization.
   ASSERT_HOST(denorm_ == NULL);
   denorm_ = new DENORM;
-  denorm_->SetupNormalization(NULL, NULL, &rotation_, NULL, NULL, 0,
+  denorm_->SetupNormalization(NULL, &rotation_, NULL,
                               0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f);
 }
 
@@ -279,19 +281,26 @@ void ColumnFinder::CorrectOrientation(TO_BLOCK* block,
 // it is still divided into blocks of equal line spacing/text size.
 // scaled_color is scaled down by scaled_factor from the input color image,
 // and may be NULL if the input was not color.
+// grey_pix is optional, but if present must match the photo_mask_pix in size,
+// and must be a *real* grey image instead of binary_pix * 255.
+// thresholds_pix is expected to be present iff grey_pix is present and
+// can be an integer factor reduction of the grey_pix. It represents the
+// thresholds that were used to create the binary_pix from the grey_pix.
 // Returns -1 if the user hits the 'd' key in the blocks window while running
 // in debug mode, which requests a retry with more debug info.
 int ColumnFinder::FindBlocks(PageSegMode pageseg_mode,
                              Pix* scaled_color, int scaled_factor,
                              TO_BLOCK* input_block, Pix* photo_mask_pix,
+                             Pix* thresholds_pix, Pix* grey_pix,
                              BLOCK_LIST* blocks, TO_BLOCK_LIST* to_blocks) {
   pixOr(photo_mask_pix, photo_mask_pix, nontext_map_);
   stroke_width_->FindLeaderPartitions(input_block, &part_grid_);
   stroke_width_->RemoveLineResidue(&big_parts_);
-  FindInitialTabVectors(NULL, min_gutter_width_, input_block);
+  FindInitialTabVectors(NULL, min_gutter_width_, tabfind_aligned_gap_fraction_,
+                        input_block);
   SetBlockRuleEdges(input_block);
   stroke_width_->GradeBlobsIntoPartitions(rerotate_, input_block, nontext_map_,
-                                          denorm_, &projection_,
+                                          denorm_, cjk_script_, &projection_,
                                           &part_grid_, &big_parts_);
   if (!PSM_SPARSE(pageseg_mode)) {
     ImageFind::FindImagePartitions(photo_mask_pix, rotation_, rerotate_,
@@ -311,6 +320,11 @@ int ColumnFinder::FindBlocks(PageSegMode pageseg_mode,
   big_parts_.clear();
   delete stroke_width_;
   stroke_width_ = NULL;
+  // Compute the edge offsets whether or not there is a grey_pix. It is done
+  // here as the c_blobs haven't been touched by rotation or anything yet,
+  // so no denorm is required, yet the text has been separated from image, so
+  // no time is wasted running it on image blobs.
+  input_block->ComputeEdgeOffsets(thresholds_pix, grey_pix);
 
   // A note about handling right-to-left scripts (Hebrew/Arabic):
   // The columns must be reversed and come out in right-to-left instead of
@@ -344,10 +358,11 @@ int ColumnFinder::FindBlocks(PageSegMode pageseg_mode,
       // Find the tab stops, estimate skew, and deskew the tabs, blobs and
       // part_grid_.
       FindTabVectors(&horizontal_lines_, &image_bblobs_, input_block,
-                     min_gutter_width_, &part_grid_, &deskew_, &reskew_);
+                     min_gutter_width_, tabfind_aligned_gap_fraction_,
+                     &part_grid_, &deskew_, &reskew_);
       // Add the deskew to the denorm_.
       DENORM* new_denorm = new DENORM;
-      new_denorm->SetupNormalization(NULL, NULL, &deskew_, denorm_, NULL, 0,
+      new_denorm->SetupNormalization(NULL, &deskew_, denorm_,
                                      0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f);
       denorm_ = new_denorm;
     }
@@ -357,6 +372,7 @@ int ColumnFinder::FindBlocks(PageSegMode pageseg_mode,
     // Make the column_sets_.
     if (!MakeColumns(false)) {
       tprintf("Empty page!!\n");
+      part_grid_.DeleteParts();
       return 0;  // This is an empty page.
     }
 
@@ -424,14 +440,16 @@ int ColumnFinder::FindBlocks(PageSegMode pageseg_mode,
     #ifndef GRAPHICS_DISABLED
     if (textord_tabfind_show_partitions) {
       ScrollView* window = MakeWindow(400, 300, "Partitions");
-      if (textord_debug_images)
-        window->Image(AlignedBlob::textord_debug_pix().string(),
-                      image_origin().x(), image_origin().y());
-      part_grid_.DisplayBoxes(window);
-      if (!textord_debug_printable)
-        DisplayTabVectors(window);
-      if (window != NULL && textord_tabfind_show_partitions > 1) {
-        delete window->AwaitEvent(SVET_DESTROY);
+      if (window != NULL) {
+        if (textord_debug_images)
+          window->Image(AlignedBlob::textord_debug_pix().string(),
+                        image_origin().x(), image_origin().y());
+        part_grid_.DisplayBoxes(window);
+        if (!textord_debug_printable)
+          DisplayTabVectors(window);
+        if (window != NULL && textord_tabfind_show_partitions > 1) {
+          delete window->AwaitEvent(SVET_DESTROY);
+        }
       }
     }
     #endif  // GRAPHICS_DISABLED
@@ -581,24 +599,23 @@ bool ColumnFinder::MakeColumns(bool single_column) {
   }
   if (textord_debug_tabfind)
     PrintColumnCandidates("Final Columns");
-  if (!column_sets_.empty()) {
+  bool has_columns = !column_sets_.empty();
+  if (has_columns) {
     // Divide the page into sections of uniform column layout.
-    AssignColumns(part_sets);
+    bool any_multi_column = AssignColumns(part_sets);
     if (textord_tabfind_show_columns) {
       DisplayColumnBounds(&part_sets);
     }
-    ComputeMeanColumnGap();
-    ColPartition_LIST parts;
-    for (int i = 0; i < part_sets.size(); ++i) {
-      ColPartitionSet* line_set = part_sets.get(i);
-      if (line_set != NULL) {
-        line_set->RelinquishParts();
-        delete line_set;
-      }
-    }
-    return true;
+    ComputeMeanColumnGap(any_multi_column);
   }
-  return false;
+  for (int i = 0; i < part_sets.size(); ++i) {
+    ColPartitionSet* line_set = part_sets.get(i);
+    if (line_set != NULL) {
+      line_set->RelinquishParts();
+      delete line_set;
+    }
+  }
+  return has_columns;
 }
 
 // Attempt to improve the column_candidates by expanding the columns
@@ -652,7 +669,8 @@ void ColumnFinder::PrintColumnCandidates(const char* title) {
 // tweak of extending the modal region over small breaks in compatibility.
 // Where modal regions overlap, the boundary is chosen so as to minimize
 // the cost in terms of ColPartitions not fitting an approved column.
-void ColumnFinder::AssignColumns(const PartSetVector& part_sets) {
+// Returns true if any part of the page is multi-column.
+bool ColumnFinder::AssignColumns(const PartSetVector& part_sets) {
   int set_count = part_sets.size();
   ASSERT_HOST(set_count == gridheight());
   // Allocate and init the best_columns_.
@@ -697,6 +715,7 @@ void ColumnFinder::AssignColumns(const PartSetVector& part_sets) {
       }
     }
   }
+  bool any_multi_column = false;
   // Assign a column set to each vertical grid position.
   // While there is an unassigned range, find its mode.
   int start, end;
@@ -734,6 +753,8 @@ void ColumnFinder::AssignColumns(const PartSetVector& part_sets) {
     // Assign the column to the range, which now may overlap with other ranges.
     AssignColumnToRange(column_set_id, start, end, column_set_costs,
                         assigned_costs);
+    if (column_sets_.get(column_set_id)->GoodColumnCount() > 1)
+      any_multi_column = true;
   }
   // If anything remains unassigned, the whole lot is unassigned, so
   // arbitrarily assign id 0.
@@ -747,6 +768,7 @@ void ColumnFinder::AssignColumns(const PartSetVector& part_sets) {
   delete [] assigned_costs;
   delete [] any_columns_possible;
   delete [] column_set_costs;
+  return any_multi_column;
 }
 
 // Finds the biggest range in part_sets_ that has no assigned column, but
@@ -904,7 +926,7 @@ void ColumnFinder::AssignColumnToRange(int column_set_id, int start, int end,
 }
 
 // Computes the mean_column_gap_.
-void ColumnFinder::ComputeMeanColumnGap() {
+void ColumnFinder::ComputeMeanColumnGap(bool any_multi_column) {
   int total_gap = 0;
   int total_width = 0;
   int gap_samples = 0;
@@ -916,8 +938,8 @@ void ColumnFinder::ComputeMeanColumnGap() {
                                                     &total_gap,
                                                     &gap_samples);
   }
-  mean_column_gap_ = gap_samples > 0 ? total_gap / gap_samples
-                                     : total_width / width_samples;
+  mean_column_gap_ = any_multi_column && gap_samples > 0
+      ? total_gap / gap_samples : total_width / width_samples;
 }
 
 //////// Functions that manipulate ColPartitions in the part_grid_ /////
@@ -1464,7 +1486,7 @@ void ColumnFinder::ReflectForRtl(TO_BLOCK* input_block, BLOBNBOX_LIST* bblobs) {
   ReflectBlobList(&input_block->large_blobs);
   // Update the denorm with the reflection.
   DENORM* new_denorm = new DENORM;
-  new_denorm->SetupNormalization(NULL, NULL, NULL, denorm_, NULL, 0,
+  new_denorm->SetupNormalization(NULL, NULL, denorm_,
                                  0.0f, 0.0f, -1.0f, 1.0f, 0.0f, 0.0f);
   denorm_ = new_denorm;
 }
@@ -1605,6 +1627,7 @@ FCOORD ColumnFinder::ComputeBlockAndClassifyRotation(BLOCK* block) {
             block->index(), block->poly_block()->isA(),
             block->re_rotation().x(), block->re_rotation().y(),
             classify_rotation.x(), classify_rotation.y());
+    block->bounding_box().print();
   }
   return blob_rotation;
 }

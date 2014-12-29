@@ -21,6 +21,10 @@
 #pragma warning(disable:4244)  // Conversion warnings
 #endif
 
+#ifdef HAVE_CONFIG_H
+#include "config_auto.h"
+#endif
+
 #include "strokewidth.h"
 
 #include <math.h>
@@ -35,27 +39,15 @@
 #include "textlineprojection.h"
 #include "tordmain.h"  // For SetBlobStrokeWidth.
 
-// Include automatically generated configuration file if running autoconf.
-#ifdef HAVE_CONFIG_H
-#include "config_auto.h"
-#endif
-
 namespace tesseract {
 
 INT_VAR(textord_tabfind_show_strokewidths, 0, "Show stroke widths");
 BOOL_VAR(textord_tabfind_only_strokewidths, false, "Only run stroke widths");
-BOOL_VAR(textord_tabfind_vertical_text, true, "Enable vertical detection");
-BOOL_VAR(textord_tabfind_force_vertical_text, false,
-         "Force using vertical text page mode");
-BOOL_VAR(textord_tabfind_vertical_horizontal_mix, true,
-         "find horizontal lines such as headers in vertical page mode");
-double_VAR(textord_tabfind_vertical_text_ratio, 0.5,
-           "Fraction of textlines deemed vertical to use vertical page mode");
 
 /** Allowed proportional change in stroke width to be the same font. */
 const double kStrokeWidthFractionTolerance = 0.125;
 /**
- * Allowed constant change in stroke width to be the same font. 
+ * Allowed constant change in stroke width to be the same font.
  * Really 1.5 pixels.
  */
 const double kStrokeWidthTolerance = 1.5;
@@ -216,11 +208,9 @@ static void CollectHorizVertBlobs(BLOBNBOX_LIST* input_blobs,
 // after rotating everything, otherwise the work done here will be enough.
 // If osd_blobs is not null, a list of blobs from the dominant textline
 // direction are returned for use in orientation and script detection.
-bool StrokeWidth::TestVerticalTextDirection(TO_BLOCK* block,
+bool StrokeWidth::TestVerticalTextDirection(double find_vertical_text_ratio,
+                                            TO_BLOCK* block,
                                             BLOBNBOX_CLIST* osd_blobs) {
-  if (textord_tabfind_force_vertical_text) return true;
-  if (!textord_tabfind_vertical_text) return false;
-
   int vertical_boxes = 0;
   int horizontal_boxes = 0;
   // Count vertical normal and large blobs.
@@ -243,7 +233,7 @@ bool StrokeWidth::TestVerticalTextDirection(TO_BLOCK* block,
     return false;
   }
   int min_vert_boxes = static_cast<int>((vertical_boxes + horizontal_boxes) *
-                                        textord_tabfind_vertical_text_ratio);
+                                        find_vertical_text_ratio);
   if (vertical_boxes >= min_vert_boxes) {
     if (osd_blobs != NULL) {
       BLOBNBOX_C_IT osd_it(osd_blobs);
@@ -357,6 +347,7 @@ void StrokeWidth::GradeBlobsIntoPartitions(const FCOORD& rerotation,
                                            TO_BLOCK* block,
                                            Pix* nontext_pix,
                                            const DENORM* denorm,
+                                           bool cjk_script,
                                            TextlineProjection* projection,
                                            ColPartitionGrid* part_grid,
                                            ColPartition_LIST* big_parts) {
@@ -368,10 +359,8 @@ void StrokeWidth::GradeBlobsIntoPartitions(const FCOORD& rerotation,
   // Setup the strokewidth grid with the remaining non-noise, non-leader blobs.
   InsertBlobs(block);
 
-  // Run FixBrokenCJK() again if the page is rotated and the blobs
-  // lists are reset and re-flitered, because we may have some new
-  // blobs in the medium blob list.
-  if (rerotation_.x() != 1.0f || rerotation_.y() != 0.0f) {
+  // Run FixBrokenCJK() again if the page is CJK.
+  if (cjk_script) {
     FixBrokenCJK(block);
   }
   FindTextlineFlowDirection(true);
@@ -1871,13 +1860,13 @@ ScrollView* StrokeWidth::DisplayGoodBlobs(const char* window_name,
 }
 
 static void DrawDiacriticJoiner(const BLOBNBOX* blob, ScrollView* window) {
+#ifndef GRAPHICS_DISABLED
   const TBOX& blob_box(blob->bounding_box());
   int top = MAX(blob_box.top(), blob->base_char_top());
   int bottom = MIN(blob_box.bottom(), blob->base_char_bottom());
   int x = (blob_box.left() + blob_box.right()) / 2;
-  #ifndef GRAPHICS_DISABLED
   window->Line(x, top, x, bottom);
-  #endif  // GRAPHICS_DISABLED
+#endif  // GRAPHICS_DISABLED
 }
 
 // Displays blobs colored according to whether or not they are diacritics.
