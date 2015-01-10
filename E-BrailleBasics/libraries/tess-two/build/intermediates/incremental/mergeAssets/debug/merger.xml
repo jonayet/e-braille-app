@@ -1,2 +1,2 @@
 <?xml version="1.0" encoding="utf-8"?>
-<merger version="3"><dataSet config="main"><source path="F:\Projects\Personal\Software\E-Braille\e-braille-app\E-BrailleBasics\libraries\tess-two\src\main\assets"/></dataSet><dataSet config="debug"><source path="F:\Projects\Personal\Software\E-Braille\e-braille-app\E-BrailleBasics\libraries\tess-two\src\debug\assets"/></dataSet></merger>
+<merger version="3"><dataSet config="main"><source path="E:\Workplace\Projects\Software\E-Braille\e-braille-app\E-BrailleBasics\libraries\tess-two\src\main\assets"/></dataSet><dataSet config="debug"><source path="E:\Workplace\Projects\Software\E-Braille\e-braille-app\E-BrailleBasics\libraries\tess-two\src\debug\assets"/></dataSet></merger>

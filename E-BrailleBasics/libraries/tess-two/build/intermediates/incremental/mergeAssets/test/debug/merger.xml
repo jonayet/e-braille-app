@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merger version="3"><dataSet config="debug"><source path="E:\Workplace\Projects\Software\E-Braille\e-braille-app\E-BrailleBasics\libraries\tess-two\build\intermediates\bundles\debug\assets"/></dataSet><dataSet config="main"><source path="E:\Workplace\Projects\Software\E-Braille\e-braille-app\E-BrailleBasics\libraries\tess-two\src\androidTest\assets"/></dataSet></merger>

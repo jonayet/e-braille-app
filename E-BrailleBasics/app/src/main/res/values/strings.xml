@@ -4,5 +4,33 @@
     <string name="app_name">E-Braille</string>
     <string name="dummy_button">Dummy Button</string>
     <string name="dummy_content">DUMMY\nCONTENT</string>
+    <string name="toast_unable_to_connect">Unable to connect device</string>
+    <string name="toast_connection_lost">Device connection was lost</string>
+    <string name="toast_connected_to">Connected to</string>
+    <string name="connect">Connect to E-Braile</string>
+    <string name="disconnect">Disconnect device</string>
+
+    <!--  DeviceListActivity -->
+    <string name="scanning">scanning for devices...</string>
+    <string name="select_device">select a device to connect</string>
+    <string name="none_paired">No devices have been paired</string>
+    <string name="none_found">No devices found</string>
+    <string name="title_paired_devices">Paired Devices</string>
+    <string name="title_other_devices">Other Available Devices</string>
+    <string name="button_scan">Scan for devices</string>
+
+    <string name="alert_dialog_no_bt">Cannot use this application without bluetooth.</string>
+    <string name="alert_dialog_yes">Yes</string>
+    <string name="alert_dialog_no">No</string>
+    <string name="alert_dialog_warning_title">Warning</string>
+    <string name="alert_dialog_ok">Ok</string>
+    <string name="alert_dialog_turn_on_bt">This application needs the Bluetooth. Do you want turn on?</string>
+
+
+
+    <string name="not_connected">You are not connected to a device</string>
+    <string name="title_connecting">connecting...</string>
+    <string name="title_connected_to">connected: </string>
+    <string name="title_not_connected">not connected</string>
 
 </resources>
