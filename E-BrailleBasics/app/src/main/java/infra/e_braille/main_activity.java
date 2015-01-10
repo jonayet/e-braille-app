@@ -116,15 +116,15 @@ public class main_activity extends Activity implements View.OnTouchListener {
         mTitle.setText(R.string.app_name);
         mTitle = (TextView) findViewById(R.id.title_right_text);
 
+        setContentView(R.layout.main_activity);
+        mSerialService = new BluetoothSerialService(this, mHandlerBT);
+        mSerialService.setAllowInsecureConnections( true );
+
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         if (mBluetoothAdapter == null) {
             finishDialogNoBluetooth();
             return;
         }
-
-        setContentView(R.layout.main_activity_fullscreen);
-        mSerialService = new BluetoothSerialService(this, mHandlerBT);
-        mSerialService.setAllowInsecureConnections( true );
 
         /*requestWindowFeature(Window.FEATURE_NO_TITLE);
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
@@ -138,7 +138,7 @@ public class main_activity extends Activity implements View.OnTouchListener {
             getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
         }
-        setContentView(R.layout.main_activity_fullscreen);
+        setContentView(R.layout.main_activity);
         final View contentView = findViewById(R.id.fullscreen_content);
 
         // Set up an instance of SystemUiHider to control the system UI for
