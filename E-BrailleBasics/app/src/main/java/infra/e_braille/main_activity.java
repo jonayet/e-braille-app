@@ -107,16 +107,16 @@ public class main_activity extends Activity implements View.OnTouchListener {
         super.onCreate(savedInstanceState);
 
         // Set up the window layout
-        //requestWindowFeature(Window.FEATURE_CUSTOM_TITLE);
-        //setContentView(R.layout.main);
-        //getWindow().setFeatureInt(Window.FEATURE_CUSTOM_TITLE, R.layout.custom_title);
+        requestWindowFeature(Window.FEATURE_CUSTOM_TITLE);
+        setContentView(R.layout.main);
+        getWindow().setFeatureInt(Window.FEATURE_CUSTOM_TITLE, R.layout.custom_title);
 
         // Set up the custom title
         mTitle = (TextView) findViewById(R.id.title_left_text);
         mTitle.setText(R.string.app_name);
         mTitle = (TextView) findViewById(R.id.title_right_text);
 
-        setContentView(R.layout.main_activity);
+/*        setContentView(R.layout.main_activity);
         mSerialService = new BluetoothSerialService(this, mHandlerBT);
         mSerialService.setAllowInsecureConnections( true );
 
@@ -124,9 +124,9 @@ public class main_activity extends Activity implements View.OnTouchListener {
         if (mBluetoothAdapter == null) {
             finishDialogNoBluetooth();
             return;
-        }
+        }*/
 
-        /*requestWindowFeature(Window.FEATURE_NO_TITLE);
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
             getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                     | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
@@ -145,9 +145,9 @@ public class main_activity extends Activity implements View.OnTouchListener {
         // this activity.
         mSystemUiHider = SystemUiHider.getInstance(this, contentView, HIDER_FLAGS);
         mSystemUiHider.setup();
-        mSystemUiHider.show();*/
+        mSystemUiHider.show();
 
-/*        previewImageView = (ImageView)findViewById(R.id.previewImageView);
+        previewImageView = (ImageView)findViewById(R.id.previewImageView);
         imageView = (ImageView)findViewById(R.id.imageView);
         imageView.setOnTouchListener(this);
 
@@ -159,7 +159,7 @@ public class main_activity extends Activity implements View.OnTouchListener {
         baseApi.init(DATA_PATH, lang);
         baseApi.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SINGLE_LINE);
         baseApi.setVariable(TessBaseAPI.VAR_CHAR_WHITELIST, ".-+?abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012345789");
-        textView = (TextView) findViewById(R.id.textView);*/
+        textView = (TextView) findViewById(R.id.textView);
     }
 
     @Override
@@ -239,14 +239,14 @@ public class main_activity extends Activity implements View.OnTouchListener {
     public void onResume(){
         super.onResume();
 
-        /*File image = new  File("/sdcard/screenshot.jpg");
+        File image = new  File("/sdcard/screenshot.jpg");
         if(image.exists()){
             screenshot = BitmapFactory.decodeFile(image.getAbsolutePath());
             imageView = (ImageView)findViewById(R.id.imageView);
             imageView.setImageBitmap(screenshot);
-        }*/
+        }
 
-        if (!mEnablingBT) { // If we are turning on the BT we cannot check if it's enable
+        /*if (!mEnablingBT) { // If we are turning on the BT we cannot check if it's enable
             if ( (mBluetoothAdapter != null)  && (!mBluetoothAdapter.isEnabled()) ) {
 
                 AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -281,7 +281,7 @@ public class main_activity extends Activity implements View.OnTouchListener {
             if (mBluetoothAdapter != null) {
 
             }
-        }
+        }*/
     }
 
     @Override
