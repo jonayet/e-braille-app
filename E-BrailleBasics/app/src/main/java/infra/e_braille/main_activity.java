@@ -62,7 +62,7 @@ public class main_activity extends Activity implements View.OnTouchListener {
     private static final int HIDER_FLAGS = SystemUiHider.FLAG_HIDE_NAVIGATION;
 
 
-    // Intent request codes
+/*    // Intent request codes
     private static final int REQUEST_CONNECT_DEVICE = 1;
     private static final int REQUEST_ENABLE_BT = 2;
 
@@ -85,7 +85,7 @@ public class main_activity extends Activity implements View.OnTouchListener {
     private BluetoothAdapter mBluetoothAdapter = null;
     private static BluetoothSerialService mSerialService = null;
     private boolean mEnablingBT;
-    private MenuItem mMenuItemConnect;
+    private MenuItem mMenuItemConnect;*/
 
     /**
      * The instance of the {@link SystemUiHider} for this activity.
@@ -109,14 +109,14 @@ public class main_activity extends Activity implements View.OnTouchListener {
         // Set up the window layout
         requestWindowFeature(Window.FEATURE_CUSTOM_TITLE);
         setContentView(R.layout.main);
-        getWindow().setFeatureInt(Window.FEATURE_CUSTOM_TITLE, R.layout.custom_title);
+        //getWindow().setFeatureInt(Window.FEATURE_CUSTOM_TITLE, R.layout.custom_title);
 
-        // Set up the custom title
+/*        // Set up the custom title
         mTitle = (TextView) findViewById(R.id.title_left_text);
         mTitle.setText(R.string.app_name);
-        mTitle = (TextView) findViewById(R.id.title_right_text);
+        mTitle = (TextView) findViewById(R.id.title_right_text);*/
 
-/*        setContentView(R.layout.main_activity);
+/*        setContentView(R.layout.main_activity_fullscreen);
         mSerialService = new BluetoothSerialService(this, mHandlerBT);
         mSerialService.setAllowInsecureConnections( true );
 
@@ -138,14 +138,6 @@ public class main_activity extends Activity implements View.OnTouchListener {
             getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
         }
-        setContentView(R.layout.main_activity);
-        final View contentView = findViewById(R.id.fullscreen_content);
-
-        // Set up an instance of SystemUiHider to control the system UI for
-        // this activity.
-        mSystemUiHider = SystemUiHider.getInstance(this, contentView, HIDER_FLAGS);
-        mSystemUiHider.setup();
-        mSystemUiHider.show();
 
         previewImageView = (ImageView)findViewById(R.id.previewImageView);
         imageView = (ImageView)findViewById(R.id.imageView);
@@ -167,7 +159,7 @@ public class main_activity extends Activity implements View.OnTouchListener {
         super.onPostCreate(savedInstanceState);
     }
 
-    // The Handler that gets information back from the BluetoothService
+    /*// The Handler that gets information back from the BluetoothService
     private final Handler mHandlerBT = new Handler() {
 
         @Override
@@ -200,13 +192,13 @@ public class main_activity extends Activity implements View.OnTouchListener {
                             break;
                     }
                     break;
-/*
+*//*
             case MESSAGE_READ:
                 byte[] readBuf = (byte[]) msg.obj;
                 mEmulatorView.write(readBuf, msg.arg1);
 
                 break;
-*/
+*//*
                 case MESSAGE_DEVICE_NAME:
                     // save the connected device's name
                     mConnectedDeviceName = msg.getData().getString(DEVICE_NAME);
@@ -233,7 +225,7 @@ public class main_activity extends Activity implements View.OnTouchListener {
                 });
         AlertDialog alert = builder.create();
         alert.show();
-    }
+    }*/
 
     @Override
     public void onResume(){
@@ -242,7 +234,6 @@ public class main_activity extends Activity implements View.OnTouchListener {
         File image = new  File("/sdcard/screenshot.jpg");
         if(image.exists()){
             screenshot = BitmapFactory.decodeFile(image.getAbsolutePath());
-            imageView = (ImageView)findViewById(R.id.imageView);
             imageView.setImageBitmap(screenshot);
         }
 
@@ -288,21 +279,12 @@ public class main_activity extends Activity implements View.OnTouchListener {
     public void onDestroy()
     {
         baseApi.end();
-        if (mSerialService != null)
-            mSerialService.stop();
+        /*if (mSerialService != null)
+            mSerialService.stop();*/
         super.onDestroy();
     }
 
-    public int getConnectionState() {
-        return mSerialService.getState();
-    }
-
-    public void send(byte[] out) {
-        if ( out.length > 0 ) {
-            mSerialService.write( out );
-        }
-    }
-
+    /*
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         switch (requestCode) {
             case REQUEST_CONNECT_DEVICE:
@@ -325,7 +307,7 @@ public class main_activity extends Activity implements View.OnTouchListener {
                     finishDialogNoBluetooth();
                 }
         }
-    }
+    }*/
 
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
@@ -338,34 +320,6 @@ public class main_activity extends Activity implements View.OnTouchListener {
                                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
             }
         }
-    }
-
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        MenuInflater inflater = getMenuInflater();
-        inflater.inflate(R.menu.option_menu, menu);
-        mMenuItemConnect = menu.getItem(0);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        switch (item.getItemId()) {
-            case R.id.connect:
-
-                if (getConnectionState() == BluetoothSerialService.STATE_NONE) {
-                    // Launch the DeviceListActivity to see devices and do scan
-                    Intent serverIntent = new Intent(this, DeviceListActivity.class);
-                    startActivityForResult(serverIntent, REQUEST_CONNECT_DEVICE);
-                }
-                else
-                if (getConnectionState() == BluetoothSerialService.STATE_CONNECTED) {
-                    mSerialService.stop();
-                    mSerialService.start();
-                }
-                return true;
-        }
-        return false;
     }
 
     @Override
